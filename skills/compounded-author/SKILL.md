@@ -9,6 +9,12 @@ You have just finished a task. You are deciding whether to propose a new skill.
 
 **Default to NOT proposing.** Skills you propose pollute the `.proposed/` queue, cost the user a verifier inference call on the next applicable task, and dilute the trust signal if they fail. Propose only when the procedure clears the bar in section 1.
 
+## 0. Did the auto-proposer nudge you?
+
+If you saw `[compounded] Auto-propose threshold reached ...` in the previous turn's additional context, the Stop hook detected high-signal activity (multi-tool, multi-file, recovery, or planned execution). That marker is a *suggestion*, not an instruction. **Still apply the qualifying bar in section 1.** The auto-proposer is conservative but it doesn't know whether the procedure is generalizable. Many high-signal turns are one-off chores that should not become skills.
+
+If you decide not to propose despite the nudge, that's fine — say nothing to the user and move on. Don't apologize for not proposing.
+
 ## 1. The qualifying bar
 
 Propose only when **all five** are true:

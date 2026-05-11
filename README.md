@@ -129,6 +129,14 @@ Skills that pass start at `.verified` and graduate by demonstrating reliability 
 
 <br />
 
+## Auto-propose (v1.1)
+
+You don't have to remember to save things. After every turn, the Stop hook scores what just happened — tool calls, distinct files edited, shell commands, recovery from failure, planned execution. When the score crosses the threshold, the agent gets a nudge to consider authoring a skill. The agent still decides whether to propose (one-off chores get ignored), but the *prompt to consider* is automatic.
+
+Quiet by design: routine turns produce zero output. You only see anything when there's real signal. Edit `~/.claude/compounded/logs/auto_propose.jsonl` to see what fired and what didn't — useful for tuning if you want to.
+
+<br />
+
 ## Demo
 
 Run the included lifecycle demo to see propose → verify → use × 3 → trust → use × 7 → autonomous → correction → demote in 30 seconds:
