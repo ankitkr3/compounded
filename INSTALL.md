@@ -23,7 +23,7 @@ python3 --version
 In Claude Code:
 
 ```
-/plugin marketplace add OWNER/compounded-marketplace
+/plugin marketplace add ankitkr3/compounded-marketplace
 /plugin install compounded@compounded-marketplace
 ```
 
@@ -42,6 +42,44 @@ compounded: USER.md 0/1500 chars · skills: 0 verified, 0 trusted, 0 autonomous,
 ```
 
 That's it. compounded is installed and active.
+
+## Permission prompts (expected, easy to silence)
+
+**Hooks fire silently — no permission prompt for any of compounded's automatic behavior.** SessionStart memory injection, the Stop hooks (verification + auto-propose), and the SessionEnd cascade all run on lifecycle events without asking.
+
+**Slash commands prompt for approval the first time you run each one.** The first time you run, say, `/compounded:status`, Claude Code shows:
+
+```
+Shell command permission check failed for pattern
+"!python3 ~/.claude/plugins/cache/compounded-marketplace/compounded/X.Y.Z/scripts/status.py":
+This command requires approval.
+```
+
+This is normal Claude Code behavior for any plugin that invokes shell scripts. Three ways to handle it:
+
+| Choice | What happens |
+|---|---|
+| **Click "always allow"** in the prompt | That specific command runs silently from then on. Recommended for casual use — just allow each command the first time it comes up. |
+| **Click "allow once"** | Re-prompts every time the same command runs. Annoying. Don't pick this one. |
+| **Allowlist all compounded commands up front** (see below) | One-time setup; no prompts ever again for any compounded command. |
+
+### Allowlist all compounded commands (optional, one-time)
+
+Add this to `~/.claude/settings.json` under `permissions.allow`:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 ~/.claude/plugins/cache/compounded-marketplace/compounded/**:*)"
+    ]
+  }
+}
+```
+
+This single pattern covers all 9 slash commands plus any future ones. Save the file and reload Claude Code.
+
+> **Why this is safe:** the pattern only allowlists Python scripts inside the compounded plugin's installed location. Anthropic's plugin install flow already required you to trust the source repo; this just removes the per-command prompt for scripts you already trust.
 
 ## Verify installation
 
@@ -72,7 +110,7 @@ If you'd prefer to install directly from the repo without going through a market
 
 ```bash
 mkdir -p ~/.claude/plugins/cache
-git clone https://github.com/OWNER/compounded ~/.claude/plugins/cache/compounded
+git clone https://github.com/ankitkr3/compounded ~/.claude/plugins/cache/compounded
 ```
 
 Then enable it via Claude Code's `/plugin` UI, or add to `~/.claude/settings.json`:
@@ -212,6 +250,6 @@ The verifier only fires when a `.proposed/` skill's hint keyword-overlaps with t
 
 ## Getting help
 
-- **Issues:** [github.com/OWNER/compounded/issues](https://github.com/OWNER/compounded/issues)
-- **Discussions:** [github.com/OWNER/compounded/discussions](https://github.com/OWNER/compounded/discussions)
+- **Issues:** [github.com/ankitkr3/compounded/issues](https://github.com/ankitkr3/compounded/issues)
+- **Discussions:** [github.com/ankitkr3/compounded/discussions](https://github.com/ankitkr3/compounded/discussions)
 - **Manifesto / philosophy:** [MANIFESTO.md](MANIFESTO.md), [PHILOSOPHY.md](PHILOSOPHY.md)

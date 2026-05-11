@@ -47,6 +47,8 @@ When your agent saves a skill from a successful task, compounded holds it in `.p
 
 Restart Claude Code. That's it.
 
+> **First-time approval prompts:** hooks fire silently, but the first time you run any `/compounded:*` slash command you'll see a Claude Code permission prompt. Either click **"always allow"** in the prompt (per-command, easiest) or pre-allowlist everything by adding `"Bash(python3 ~/.claude/plugins/cache/compounded-marketplace/compounded/**:*)"` to `permissions.allow` in `~/.claude/settings.json`. See [INSTALL.md](INSTALL.md#permission-prompts-expected-easy-to-silence) for details.
+
 <table>
 <tr>
 <td>✅ No daemon to run</td>
