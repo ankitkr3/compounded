@@ -13,7 +13,7 @@
 
 set -e
 export COMPOUNDED_HOME=$(mktemp -d -t compounded-demo-XXXX)
-SCRIPTS=/home/claude/compounded/scripts
+SCRIPTS="${SCRIPTS:-$(cd "$(dirname "$0")/../scripts" && pwd)}"
 
 cls() { printf "\033[2J\033[H"; }
 say() { printf "\033[36m# %s\033[0m\n" "$1"; sleep 1.2; }
