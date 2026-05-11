@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin.json",
+  "name": "compounded",
+  "version": "1.0.0",
+  "description": "Turns your agent into a trainable employee. Skills earn autonomy through demonstrated reliability — proposed → verified → trusted → autonomous. No daemon. No cloud.",
+  "author": {
+    "name": "compounded contributors"
+  },
+  "homepage": "https://github.com/ankitkr3/compounded",
+  "repository": "https://github.com/ankitkr3/compounded",
+  "license": "MIT",
+  "keywords": [
+    "memory",
+    "skills",
+    "self-improving",
+    "trust-gradient",
+    "earned-autonomy",
+    "verified-skills",
+    "local-first"
+  ],
+  "category": "productivity"
+}

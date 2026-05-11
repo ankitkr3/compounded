@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local compounded data (should never be committed)
+.compounded-test/
+test-compounded-home/
+
+# Local archives
+*.tar.gz
+!docs/**/*.tar.gz

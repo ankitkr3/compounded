@@ -1,0 +1,41 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Run tests
+        run: python3 -m unittest discover tests/ -v
+
+      - name: Validate plugin manifest
+        run: |
+          python3 -c "import json; json.load(open('.claude-plugin/plugin.json'))"
+
+      - name: Validate hooks config
+        run: |
+          python3 -c "import json; json.load(open('hooks/hooks.json'))"
+
+      - name: Smoke test - basic CLI
+        run: |
+          export COMPOUNDED_HOME=$(mktemp -d)
+          python3 scripts/status.py
+          python3 scripts/status.py --trust-ladder
+          echo '{"source":"startup"}' | python3 scripts/memory_inject.py | python3 -c "import json,sys; obj=json.loads(sys.stdin.read()); assert 'hookSpecificOutput' in obj, obj"
