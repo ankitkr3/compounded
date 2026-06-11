@@ -56,6 +56,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from pathlib import Path
 from typing import Iterable
 
@@ -218,6 +219,52 @@ def _content(ev: dict) -> object:
     if isinstance(msg, dict) and "content" in msg:
         return msg.get("content")
     return ev.get("content")
+
+
+SETTLE_DEADLINE_S = 1.5
+SETTLE_POLL_S = 0.25
+
+
+def _ends_with_assistant_text(events: list[dict]) -> bool:
+    """True if the last meaningful event is an assistant message with text.
+
+    Hook/system entries appended after the turn are skipped. If the last
+    meaningful event is a user/tool_result, the turn's final assistant
+    message has not been flushed yet.
+    """
+    for ev in reversed(events):
+        role = ev.get("type") or ev.get("role")
+        if role in ("attachment", "system", "summary"):
+            continue
+        if role != "assistant":
+            return False
+        content = _content(ev)
+        if isinstance(content, str):
+            return bool(content.strip())
+        if isinstance(content, list):
+            return any(
+                isinstance(b, dict) and b.get("type") == "text" and str(b.get("text", "")).strip()
+                for b in content
+            )
+        return False
+    return False
+
+
+def _read_events_settled(transcript_path: str) -> list[dict]:
+    """Read the transcript tail, waiting briefly for the final message.
+
+    Claude Code can fire the Stop hook before the turn's last assistant
+    message is flushed to the transcript file. The acknowledgment channel
+    (channel 2 of correction detection) lives in exactly that message, so
+    a stale read silently disables it. Poll until the tail ends with
+    assistant text or the deadline passes.
+    """
+    events = list(_iter_transcript(transcript_path))
+    deadline = time.monotonic() + SETTLE_DEADLINE_S
+    while events and not _ends_with_assistant_text(events) and time.monotonic() < deadline:
+        time.sleep(SETTLE_POLL_S)
+        events = list(_iter_transcript(transcript_path))
+    return events
 
 
 def _split_into_turns(events: list[dict]) -> tuple[list[dict], dict | None]:
@@ -484,7 +531,7 @@ def main() -> int:
     # on its own — and a pending rule may wait weeks for its verifying task,
     # during which learning must not be muted.
 
-    events = list(_iter_transcript(transcript_path))
+    events = _read_events_settled(transcript_path)
     if not events:
         sys.stdout.write(json.dumps({"continue": True, "suppressOutput": True}))
         return 0

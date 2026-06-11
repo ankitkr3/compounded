@@ -355,6 +355,7 @@ class AutoProposeMainTests(unittest.TestCase):
                 ("Bash", {"command": "pytest"}),
             ]),
             _tool_result(),
+            _assistant(text="Project scaffolding is set up and tests pass."),
         ]
         self._write_transcript(events)
         result = self._run({"transcript_path": str(self.transcript), "session_id": "abc"})
@@ -374,6 +375,7 @@ class AutoProposeMainTests(unittest.TestCase):
                 ("Edit", {"file_path": "/embed.py", "old_string": "old-model", "new_string": "new-model"}),
             ]),
             _tool_result(),
+            _assistant(text="Done — switched to the newer model."),
         ]
 
     def test_correction_session_blocks_with_rule_reason(self) -> None:
@@ -432,11 +434,44 @@ class AutoProposeMainTests(unittest.TestCase):
                 ("Bash", {"command": "git status"}),
             ]),
             _tool_result(),
+            _assistant(text="Refactor complete."),
         ]
         self._write_transcript(events)
         result = self._run({"transcript_path": str(self.transcript)})
         self.assertIn("systemMessage", result["output"])
         self.assertNotIn("decision", result["output"])
+
+    def test_settle_waits_for_late_final_message(self) -> None:
+        # Regression (field): Claude Code fired the Stop hook before the
+        # turn's final assistant message hit the transcript. The ack lived
+        # only in that message ("You were right — ..."), so channel 2
+        # silently read stale data and never fired. The hook must wait for
+        # the tail to settle.
+        import threading
+
+        events = [
+            _user("i think u are wrong gemini already has newer model can u web search and tell"),
+            _assistant(tool_uses=[("WebSearch", {"query": "latest gemini embedding model 2026"})]),
+            _tool_result(),
+            # final assistant message intentionally missing — flushed late
+        ]
+        self._write_transcript(events)
+
+        def append_final_message() -> None:
+            with self.transcript.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(_assistant(
+                    text="You were right — Google released Gemini Embedding 2 in 2026."
+                )) + "\n")
+
+        t = threading.Timer(0.4, append_final_message)
+        t.start()
+        try:
+            result = self._run({"transcript_path": str(self.transcript), "session_id": "race"})
+        finally:
+            t.join()
+        # With the settle wait, the late ack is seen and rule capture fires.
+        self.assertEqual(result["output"].get("decision"), "block")
+        self.assertIn("RULE MODE", result["output"]["reason"])
 
 
 if __name__ == "__main__":
