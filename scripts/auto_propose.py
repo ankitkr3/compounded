@@ -42,8 +42,10 @@ Two capture kinds:
               events; they trigger capture rather than suppress it.
 
 Debounce:
-- If any .proposed/ skill already exists, do not auto-propose (avoid pile-up).
-- Hook never re-fires within the same turn (Claude Code's hook semantics).
+- Pending proposals do NOT mute capture: saves are user-approved, so the
+  queue cannot grow on its own, and a pending rule may legitimately wait
+  weeks for its verifying task.
+- stop_hook_active guards against block loops within a turn-chain.
 
 Failure mode:
 - ANY exception → silent exit with {"continue": true, "suppressOutput": true}.
@@ -60,7 +62,6 @@ from typing import Iterable
 sys.path.insert(0, str(Path(__file__).parent))
 
 from _lib import (
-    PROPOSED_DIR,
     ensure_layout,
     jsonl_log,
     now_ts,
@@ -470,15 +471,6 @@ def build_rule_reason(signals: dict) -> str:
 # Entry point
 # -----------------------------------------------------------------------------
 
-def _has_pending_proposal() -> bool:
-    if not PROPOSED_DIR.exists():
-        return False
-    return any(
-        p.is_dir() and (p / "SKILL.md").exists()
-        for p in PROPOSED_DIR.iterdir()
-    )
-
-
 def main() -> int:
     ensure_layout()
     hook_input = read_hook_input()
@@ -487,11 +479,10 @@ def main() -> int:
     # and Claude continued. Never nudge again in that state — loop guard.
     stop_hook_active = bool(hook_input.get("stop_hook_active"))
 
-    # If a proposal is already pending, don't pile up. The other Stop hook
-    # (skill_verify.py) is responsible for moving those forward.
-    if _has_pending_proposal():
-        sys.stdout.write(json.dumps({"continue": True, "suppressOutput": True}))
-        return 0
+    # NOTE: pending proposals deliberately do NOT debounce capture. Every
+    # save is gated by explicit user approval, so the queue cannot pile up
+    # on its own — and a pending rule may wait weeks for its verifying task,
+    # during which learning must not be muted.
 
     events = list(_iter_transcript(transcript_path))
     if not events:

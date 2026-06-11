@@ -277,7 +277,7 @@ To switch to Sonnet for higher-accuracy verification (~5× the cost), edit `~/.c
 
 ## Tested
 
-49 unit tests covering memory injection, skill proposal, correction-driven rule capture, transcript-schema parsing, security scanning, trust-ladder transitions in all directions, pin behavior, stale-sweep exemptions, archive roundtrip, and verdict finalization.
+50 unit tests covering memory injection, skill proposal, correction-driven rule capture, transcript-schema parsing, security scanning, trust-ladder transitions in all directions, pin behavior, stale-sweep exemptions, archive roundtrip, and verdict finalization.
 
 ```sh
 git clone https://github.com/ankitkr3/compounded

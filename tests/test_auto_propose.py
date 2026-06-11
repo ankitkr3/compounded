@@ -401,13 +401,27 @@ class AutoProposeMainTests(unittest.TestCase):
         self.assertNotIn("decision", result["output"])
         self.assertTrue(result["output"].get("suppressOutput"))
 
-    def test_pending_proposal_debounces(self) -> None:
-        # Create a pre-existing .proposed/foo
+    def _make_pending_proposal(self, name: str = "foo") -> None:
         home = Path(os.environ["COMPOUNDED_HOME"])
-        proposed_dir = home / "skills" / ".proposed" / "foo"
+        proposed_dir = home / "skills" / ".proposed" / name
         proposed_dir.mkdir(parents=True, exist_ok=True)
-        (proposed_dir / "SKILL.md").write_text("---\nname: foo\ndescription: x\n---\n", encoding="utf-8")
+        (proposed_dir / "SKILL.md").write_text(
+            f"---\nname: {name}\ndescription: x\n---\n", encoding="utf-8"
+        )
 
+    def test_pending_proposal_does_not_block_rule_capture(self) -> None:
+        # Regression (field): a saved rule sat in .proposed/ and the old
+        # binary debounce muted ALL further learning — the next correction
+        # (the Gemini case) was never even scored. Saves are user-approved,
+        # so pending proposals must not gate capture.
+        self._make_pending_proposal()
+        self._write_transcript(self._correction_events())
+        result = self._run({"transcript_path": str(self.transcript), "session_id": "abc"})
+        self.assertEqual(result["output"].get("decision"), "block")
+        self.assertIn("RULE MODE", result["output"]["reason"])
+
+    def test_pending_proposal_does_not_block_procedure_hint(self) -> None:
+        self._make_pending_proposal()
         events = [
             _user("do a big refactor"),
             _assistant(tool_uses=[
@@ -421,9 +435,8 @@ class AutoProposeMainTests(unittest.TestCase):
         ]
         self._write_transcript(events)
         result = self._run({"transcript_path": str(self.transcript)})
-        # Should be silent because a proposal is pending.
-        self.assertTrue(result["output"].get("suppressOutput"))
-        self.assertNotIn("additionalContext", result["output"])
+        self.assertIn("systemMessage", result["output"])
+        self.assertNotIn("decision", result["output"])
 
 
 if __name__ == "__main__":
