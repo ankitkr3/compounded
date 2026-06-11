@@ -22,6 +22,12 @@ Correct Claude once — it asks to remember the lesson, then never makes that mi
 
 <br />
 
+<img src="assets/demo.gif" width="830" alt="Demo: you correct Claude once, compounded asks to save the rule, and Claude never makes that mistake again." />
+
+<sub>Correct it once. Approve the lesson. Never repeat yourself.</sub>
+
+<br />
+
 </div>
 
 ---
