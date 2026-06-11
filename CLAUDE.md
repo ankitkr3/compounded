@@ -59,7 +59,7 @@ compounded is a Claude Code plugin that adds a trust gradient and verified skill
 python3 -m unittest discover tests/ -v
 ```
 
-All 46 tests should pass. CI runs them on every PR (when CI is set up). Adding new functionality requires adding new tests.
+All 49 tests should pass. CI runs them on every PR (when CI is set up). Adding new functionality requires adding new tests.
 
 ## Style
 

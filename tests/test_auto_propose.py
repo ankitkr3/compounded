@@ -144,6 +144,53 @@ class AutoProposeScorerTests(unittest.TestCase):
         self.assertFalse(signals["fire"])
         self.assertIsNone(signals["capture_kind"])
 
+    def test_soft_user_correction_captures_rule(self) -> None:
+        # Regression: real user phrasing from the field — polite doubt, no
+        # hard "no"/"wrong" keywords. Must still arm rule capture.
+        events = [
+            _user("i think its gemini 2 , can u web search and confirm on this"),
+            _assistant(tool_uses=[
+                ("WebSearch", {"query": "best Gemini embedding model 2026"}),
+                ("WebSearch", {"query": "Google Gemini 2 embedding model release"}),
+            ]),
+            _tool_result(),
+        ]
+        turn, prior = self.auto_propose._split_into_turns(events)
+        signals = self.auto_propose.score_turn(turn, prior)
+        self.assertTrue(signals["correction_user"])
+        self.assertEqual(signals["capture_kind"], "rule")
+
+    def test_assistant_acknowledgment_captures_rule_for_any_phrasing(self) -> None:
+        # Channel 2: the user's phrasing matches NO pattern at all, but the
+        # assistant's reply acknowledges the correction — that generalizes.
+        events = [
+            _user("hmm gemini 2 maybe?"),
+            _assistant(
+                tool_uses=[("WebSearch", {"query": "latest gemini embedding"})],
+                text="You're right — there's a newer one. gemini-embedding-2 supersedes it.",
+            ),
+            _tool_result(),
+        ]
+        turn, prior = self.auto_propose._split_into_turns(events)
+        signals = self.auto_propose.score_turn(turn, prior)
+        self.assertFalse(signals["correction_user"])   # phrasing matched nothing
+        self.assertTrue(signals["correction_ack"])     # Claude's reaction did
+        self.assertEqual(signals["capture_kind"], "rule")
+
+    def test_neutral_exchange_is_not_a_correction(self) -> None:
+        events = [
+            _user("thanks, also add a docstring please"),
+            _assistant(
+                tool_uses=[("Edit", {"file_path": "/a.py", "old_string": "x", "new_string": "y"})],
+                text="Added the docstring.",
+            ),
+            _tool_result(),
+        ]
+        turn, prior = self.auto_propose._split_into_turns(events)
+        signals = self.auto_propose.score_turn(turn, prior)
+        self.assertFalse(signals["correction"])
+        self.assertNotEqual(signals["capture_kind"], "rule")
+
     def test_clean_high_signal_turn_captures_procedure(self) -> None:
         events = [
             _user("set up the project scaffolding"),

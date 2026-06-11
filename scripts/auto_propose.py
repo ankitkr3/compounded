@@ -83,10 +83,17 @@ EDIT_TOOLS = {"Edit", "Write", "NotebookEdit", "MultiEdit"}
 BASH_TOOLS = {"Bash"}
 PLAN_TOOLS = {"Plan", "EnterPlanMode", "ExitPlanMode"}
 
+# --- correction detection: two channels ------------------------------------
+# Channel 1: the USER's message. Users phrase corrections in unbounded ways
+# ("i think its gemini 2, can u confirm?"), so patterns here are a fast path,
+# never the whole story.
 CORRECTION_PATTERNS = (
+    # hard corrections
     "no, ",
     "no.",
     "no,",
+    "no —",
+    "no -",
     "undo",
     "revert",
     "that's wrong",
@@ -100,6 +107,63 @@ CORRECTION_PATTERNS = (
     "stop, ",
     "wait, ",
     "wait,",
+    # soft corrections / doubt
+    "i think it",
+    "i thought it",
+    "are you sure",
+    "are u sure",
+    "can you confirm",
+    "can u confirm",
+    "can you check",
+    "can u check",
+    "double check",
+    "double-check",
+    "isn't it",
+    "isnt it",
+    "isn't there",
+    "isnt there",
+    "is there a newer",
+    "that's old",
+    "thats old",
+    "outdated",
+    "out of date",
+    "not the latest",
+    "check again",
+    "look it up",
+    "verify that",
+    "recheck",
+)
+
+# Channel 2: the ASSISTANT's reaction. This is the channel that generalizes:
+# however the user phrases a correction, the model's acknowledgment is highly
+# standardized ("you're right", "my mistake", "good catch"). The LLM in the
+# loop does the semantic understanding; the hook just reads its reaction.
+ACK_PATTERNS = (
+    "you're right",
+    "you are right",
+    "youre right",
+    "you're correct",
+    "you are correct",
+    "you're absolutely right",
+    "your instinct was correct",
+    "good catch",
+    "my mistake",
+    "my bad",
+    "i was wrong",
+    "i was incorrect",
+    "i stand corrected",
+    "stand corrected",
+    "i misspoke",
+    "you were right",
+    "fair point",
+    "i apologize",
+    "apologies —",
+    "apologies,",
+    "has superseded",
+    "supersedes the",
+    "i mentioned earlier",
+    "i said earlier",
+    "correcting my",
 )
 
 
@@ -266,12 +330,28 @@ def _has_recovery(turn_events: list[dict]) -> bool:
 
 
 def _has_correction_signal(prior_user: dict | None) -> bool:
+    """Channel 1: correction phrasing in the user's message (fast path)."""
     if prior_user is None:
         return False
     text = _extract_text(prior_user).lower()
     if not text:
         return False
     return any(p in text for p in CORRECTION_PATTERNS)
+
+
+def _assistant_acknowledged_correction(turn_events: list[dict]) -> bool:
+    """Channel 2: the assistant's own text admits it was corrected.
+
+    Generalizes to ANY user phrasing — the model already understood the
+    correction semantically, and its acknowledgment language is standardized.
+    """
+    for ev in turn_events:
+        if (ev.get("type") or ev.get("role")) != "assistant":
+            continue
+        text = _extract_text(ev).lower()
+        if text and any(p in text for p in ACK_PATTERNS):
+            return True
+    return False
 
 
 # -----------------------------------------------------------------------------
@@ -284,7 +364,9 @@ def score_turn(turn_events: list[dict], prior_user: dict | None) -> dict:
     bash_count = sum(1 for tu in tool_uses if tu.get("name") in BASH_TOOLS)
     plan_used = any(tu.get("name") in PLAN_TOOLS for tu in tool_uses)
     recovery = _has_recovery(turn_events)
-    correction = _has_correction_signal(prior_user)
+    correction_user = _has_correction_signal(prior_user)
+    correction_ack = _assistant_acknowledged_correction(turn_events)
+    correction = correction_user or correction_ack
 
     score = 0
     if len(tool_uses) >= THRESHOLD_TOOL_USES:
@@ -318,6 +400,8 @@ def score_turn(turn_events: list[dict], prior_user: dict | None) -> dict:
         "plan_used": plan_used,
         "recovery": recovery,
         "correction": correction,
+        "correction_user": correction_user,
+        "correction_ack": correction_ack,
     }
 
 
