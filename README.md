@@ -6,7 +6,7 @@
 
 ### Your AI agent gets better at *you* the longer you use it.
 
-Correct Claude once — it asks to remember the lesson, then never makes that mistake again. Skills earn autonomy through demonstrated reliability — they start `.proposed`, prove themselves to become `.verified`, build a track record to reach `.trusted`, and finally graduate to `.autonomous`. **No daemon. No cloud. No re-explaining.**
+Correct Claude once — it asks to remember the lesson, then never makes that mistake again. **Your approval is the only gate**: saved rules are active immediately at `.verified`, build a track record to reach `.trusted`, and graduate to `.autonomous`. One correction sends them back down. **No daemon. No cloud. No re-explaining.**
 
 <br />
 
@@ -53,7 +53,7 @@ And it's not blind trust: every saved lesson starts on probation and **earns** m
 > Claude Code's **AutoMemory** writes notes. **AutoDream** cleans them.
 > **compounded verifies them — and lets them earn the right to act.**
 
-When your agent saves a skill from a successful task, compounded holds it in `.proposed/`. The next time a similar task comes up, a verifier subagent replays the procedure. Pass → `.verified`. Three clean uses → `.trusted`. Ten uses with no recent corrections → `.autonomous`. One correction sends it back a step.
+When compounded captures a lesson, you approve it once and it's live — `.verified`, injected into every session. Three clean uses → `.trusted`. Ten with no recent corrections → `.autonomous`. One correction sends it back a step. Unapproved captures and demoted skills wait in `.proposed/` for a verifier replay before re-entering.
 
 **It's how you train a junior. It's how you should train your agent.**
 
@@ -126,9 +126,9 @@ AutoMemory writes per-project notes — compounded writes the **preferences and 
 
 ### ✓ Verified skills
 
-When the agent proposes a skill, it's a **hypothesis until proven**. The verifier subagent replays the procedure against a real follow-up task and decides PASS or FAIL with a logged reason.
+Approve a lesson once and it's `.verified` — **active immediately**, injected at every session start. It graduates by demonstrating reliability over real use, and demotes the moment it steers a task wrong.
 
-Skills that pass start at `.verified` and graduate by demonstrating reliability over real use. Skills that fail go to `.rejected/` (recoverable, not deleted) with the reason on disk.
+The verifier subagent guards the unapproved path (imports, demotions): replay against a real task, PASS or FAIL with the reason logged. Failures land in `.rejected/` (recoverable, not deleted).
 
 </td>
 <td width="33%" valign="top">
@@ -277,7 +277,7 @@ To switch to Sonnet for higher-accuracy verification (~5× the cost), edit `~/.c
 
 ## Tested
 
-53 unit tests covering memory injection, skill proposal, correction-driven rule capture, transcript-schema parsing, security scanning, trust-ladder transitions in all directions, pin behavior, stale-sweep exemptions, archive roundtrip, and verdict finalization.
+55 unit tests covering memory injection, skill proposal, correction-driven rule capture, transcript-schema parsing, security scanning, trust-ladder transitions in all directions, pin behavior, stale-sweep exemptions, archive roundtrip, and verdict finalization.
 
 ```sh
 git clone https://github.com/ankitkr3/compounded

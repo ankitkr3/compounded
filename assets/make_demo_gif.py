@@ -158,10 +158,10 @@ emit(base + [box_top, box_l1, box_l2, box_sp, box_buttons(True), box_bot], 700)
 
 # 7. saved
 lines = base + [box_top, box_l1, box_l2, box_sp, box_buttons(True), box_bot, []]
-lines = lines + [[S("✓ ", GREEN, bold=True), S("Rule saved → ", FG), S(".proposed/", PURPLE, bold=True), S("latest-model-web-search", PURPLE)]]
+lines = lines + [[S("✓ ", GREEN, bold=True), S("Rule saved → ", FG), S(".verified/", PURPLE, bold=True), S("latest-model-web-search", PURPLE)]]
 emit(lines, 800)
-lines = lines + [[S("  ", FG), S("it will earn trust with every clean use — and never make", DIM)]]
-lines = lines + [[S("  ", FG), S("this mistake again", DIM)]]
+lines = lines + [[S("  ", FG), S("active immediately — it earns trust with every clean use,", DIM)]]
+lines = lines + [[S("  ", FG), S("and never makes this mistake again", DIM)]]
 emit(lines, 3200)
 
 # ---- save ------------------------------------------------------------------

@@ -136,6 +136,14 @@ CORRECTION_PATTERNS = (
     "recheck",
 )
 
+# Both channels match only within the OPENING of a message (first
+# OPENING_WINDOW_CHARS). Genuine corrections and acknowledgments lead:
+# "no, that's wrong...", "You were right — ...". Pattern text buried deep
+# in a message is almost always quoted/pasted content (transcripts, code,
+# skill templates discussing these very phrases) — a structural guard
+# beats more keyword surgery.
+OPENING_WINDOW_CHARS = 250
+
 # Channel 2: the ASSISTANT's reaction. This is the channel that generalizes:
 # however the user phrases a correction, the model's acknowledgment is highly
 # standardized ("you're right", "my mistake", "good catch"). The LLM in the
@@ -378,10 +386,14 @@ def _has_recovery(turn_events: list[dict]) -> bool:
 
 
 def _has_correction_signal(prior_user: dict | None) -> bool:
-    """Channel 1: correction phrasing in the user's message (fast path)."""
+    """Channel 1: correction phrasing OPENING the user's message (fast path).
+
+    Only the first OPENING_WINDOW_CHARS are scanned — matches buried deeper
+    are quoted/pasted content, not the user correcting.
+    """
     if prior_user is None:
         return False
-    text = _extract_text(prior_user).lower()
+    text = _extract_text(prior_user).lower()[:OPENING_WINDOW_CHARS]
     if not text:
         return False
     return any(p in text for p in CORRECTION_PATTERNS)
@@ -392,11 +404,14 @@ def _assistant_acknowledged_correction(turn_events: list[dict]) -> bool:
 
     Generalizes to ANY user phrasing — the model already understood the
     correction semantically, and its acknowledgment language is standardized.
+    Acknowledgments open a reply ("You were right — ..."), so only the first
+    OPENING_WINDOW_CHARS of each assistant message are scanned; deeper
+    matches are the assistant *discussing or quoting* such phrases.
     """
     for ev in turn_events:
         if (ev.get("type") or ev.get("role")) != "assistant":
             continue
-        text = _extract_text(ev).lower()
+        text = _extract_text(ev).lower()[:OPENING_WINDOW_CHARS]
         if text and any(p in text for p in ACK_PATTERNS):
             return True
     return False

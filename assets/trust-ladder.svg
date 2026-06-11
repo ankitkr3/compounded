@@ -23,8 +23,8 @@
       <animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.2;0.25;1" dur="8s" repeatCount="indefinite"/>
     </rect>
     <text x="125" y="152" text-anchor="middle" class="t tier" fill="#ADB5BD">.proposed</text>
-    <text x="125" y="174" text-anchor="middle" class="t sub">a new idea, written down</text>
-    <text x="125" y="191" text-anchor="middle" class="t sub">— not trusted yet</text>
+    <text x="125" y="174" text-anchor="middle" class="t sub">unapproved or demoted —</text>
+    <text x="125" y="191" text-anchor="middle" class="t sub">waiting for verification</text>
   </g>
   <line x1="224" y1="148" x2="251" y2="138" stroke="#6E7681" stroke-width="2" marker-end="url(#arrUp)"/>
   <text x="350" y="90" text-anchor="middle" class="t lbl">↑ passes 1 check</text>
@@ -36,8 +36,8 @@
       <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.2;0.25;0.45;0.5;1" dur="8s" repeatCount="indefinite"/>
     </rect>
     <text x="350" y="132" text-anchor="middle" class="t tier" fill="#58A6FF">.verified</text>
-    <text x="350" y="154" text-anchor="middle" class="t sub">proven to work once,</text>
-    <text x="350" y="171" text-anchor="middle" class="t sub">on a real task</text>
+    <text x="350" y="154" text-anchor="middle" class="t sub">approved by you — active,</text>
+    <text x="350" y="171" text-anchor="middle" class="t sub">injected every session</text>
   </g>
   <line x1="449" y1="128" x2="476" y2="118" stroke="#6E7681" stroke-width="2" marker-end="url(#arrUp)"/>
   <text x="575" y="70" text-anchor="middle" class="t lbl">↑ 3 clean uses</text>

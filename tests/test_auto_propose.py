@@ -177,6 +177,46 @@ class AutoProposeScorerTests(unittest.TestCase):
         self.assertTrue(signals["correction_ack"])     # Claude's reaction did
         self.assertEqual(signals["capture_kind"], "rule")
 
+    def test_pattern_buried_in_user_paste_is_not_a_correction(self) -> None:
+        # Regression (field): the user pasted a transcript that contained
+        # "Is there a newer [model / SDK / tool] than [X]?" ~1000 chars in —
+        # quoted content, not a correction. Only the opening counts.
+        paste = (
+            "here is what happened in my other session, it worked great:\n"
+            + "lorem ipsum status output " * 40
+            + "\n## When this fires\n- \"Is there a newer [model / SDK / tool] than [X]?\"\n"
+        )
+        events = [
+            _user(paste),
+            _assistant(
+                tool_uses=[("Bash", {"command": "ls"})],
+                text="Glad it worked — both rules are active now.",
+            ),
+            _tool_result(),
+        ]
+        turn, prior = self.auto_propose._split_into_turns(events)
+        signals = self.auto_propose.score_turn(turn, prior)
+        self.assertFalse(signals["correction_user"])
+        self.assertNotEqual(signals["capture_kind"], "rule")
+
+    def test_ack_phrase_quoted_deep_in_assistant_reply_is_not_a_correction(self) -> None:
+        # Regression (field): the assistant *explaining* the detector quoted
+        # phrases like "You're right" mid-message and tripped channel 2.
+        long_explainer = (
+            "Here is how the detection design works. " * 12
+            + 'The model normalizes phrasing into forms like "you\'re right" or "my mistake", '
+            "which the hook reads as channel 2."
+        )
+        events = [
+            _user("explain how the detector works"),
+            _assistant(tool_uses=[("Read", {"file_path": "/x.py"})], text=long_explainer),
+            _tool_result(),
+        ]
+        turn, prior = self.auto_propose._split_into_turns(events)
+        signals = self.auto_propose.score_turn(turn, prior)
+        self.assertFalse(signals["correction_ack"])
+        self.assertNotEqual(signals["capture_kind"], "rule")
+
     def test_neutral_exchange_is_not_a_correction(self) -> None:
         events = [
             _user("thanks, also add a docstring please"),
