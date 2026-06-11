@@ -136,14 +136,17 @@ Offer options like "Save it" / "Don't save". If the user picks "Don't save" (or 
 
 ## 3. Calling skill_propose
 
-Once the user has approved, invoke the compounded proposal mechanism via the `Bash` tool. Resolve the installed plugin path first (the version segment changes across updates):
+Once the user has approved, invoke the compounded proposal mechanism via the `Bash` tool with `--approved`. **The user's approval is the only gate** — approved skills save directly to `.verified/` and are active immediately; there is no verifier round-trip. Resolve the installed plugin path first (the version segment changes across updates):
 
 ```bash
 PROPOSE=$(ls ~/.claude/plugins/cache/*/compounded/*/scripts/skill_propose.py 2>/dev/null | sort -V | tail -1)
 python3 "$PROPOSE" \
   --name "<kebab-case-name>" \
-  --verification-hint "<one-sentence description of when a future task qualifies for replay verification>"
+  --approved \
+  --verification-hint "<one-sentence description of when a future task should apply this skill>"
 ```
+
+(Omit `--approved` only when staging something the user has NOT approved — it then goes to `.proposed/` and waits for verification. With the approval gate in section 2.5, that path is rare.)
 
 When you run that command, write the SKILL.md content to stdin via a heredoc so it is captured exactly. Example invocation:
 
@@ -192,13 +195,12 @@ The hint is critical. It is the criterion that the verifier subagent uses to dec
 - "any time the user asks for help" (matches every task; will trigger spurious verifications)
 - "see procedure" (gives the verifier nothing to check against)
 
-## 5. After proposing
+## 5. After saving
 
 After `skill_propose.py` returns success:
 
-1. Tell the user briefly: "I've proposed a skill called `<name>`. It will be verified the next time a similar task comes up. If verification passes, it graduates to `.verified` and becomes available."
-2. Do NOT load or use the proposed skill in this session. It is unverified.
-3. Do NOT propose another related skill in the same session unless the procedures are genuinely orthogonal. Multiple proposals in one session usually indicate the procedure should have been one larger skill.
+1. Tell the user briefly: "Saved `<name>` — it's active now (rules are injected at session start) and earns trust with each clean use; a correction demotes it."
+2. Do NOT save another related skill in the same session unless the lessons are genuinely orthogonal. Multiple saves in one session usually indicate it should have been one skill.
 
 ## 6. Pitfalls
 

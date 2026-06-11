@@ -96,8 +96,8 @@ Restart Claude Code. That's it.
 
 | Tier | Behavior | Activation |
 |---|---|---|
-| `.proposed` | Authored by the agent, awaiting verification | Never auto-loads |
-| `.verified` | Replayed once successfully on a real task | Loads only when invoked by name |
+| `.proposed` | Unapproved: demoted skills and imports, awaiting verification | Never auto-loads |
+| `.verified` | User-approved at capture, or verified on a real task | Rules inject at session start |
 | `.trusted` | 3+ clean uses on real follow-ups | Auto-loads, asks before applying |
 | `.autonomous` | 10+ uses, last 5 clean, no recent corrections | Runs without asking |
 
@@ -151,10 +151,10 @@ Corrections are the highest-signal teaching moments — so compounded treats the
 
 1. **You correct Claude** ("no — web-search for the latest model first") and Claude does the corrective work
 2. The Stop hook spots the correction and nudges Claude: *the delta between what you asked, what it did, and how you corrected it is a lesson*
-3. Claude extracts the generalizable rule and **asks you to approve it before anything is saved**
-4. Approved rules become trigger-keyed `kind: rule` skills — *"when the user asks for the latest X, web-search first"* — that fire on matching future requests and climb the same trust ladder
+3. Claude extracts the generalizable rule and **asks you to approve it — your approval is the only gate**
+4. Approved rules save straight to `.verified/` and are **injected at the start of every session** — *"when the user asks for the latest X, web-search first"* — active immediately, climbing the trust ladder with each clean use, demoted the moment they steer a task wrong
 
-One-off corrections ("use port 3001 here") are deliberately ignored — only rules with a clear, general trigger get proposed. Rule skills are also exempt from the 30-day stale sweep, since "ask for the latest model" might legitimately not come up again for a while.
+One-off corrections ("use port 3001 here") are deliberately ignored — only rules with a clear, general trigger get proposed. `.proposed/` still exists for the unapproved path: demoted skills and imports wait there for verification.
 
 ## Auto-propose (v1.1)
 
@@ -277,7 +277,7 @@ To switch to Sonnet for higher-accuracy verification (~5× the cost), edit `~/.c
 
 ## Tested
 
-50 unit tests covering memory injection, skill proposal, correction-driven rule capture, transcript-schema parsing, security scanning, trust-ladder transitions in all directions, pin behavior, stale-sweep exemptions, archive roundtrip, and verdict finalization.
+52 unit tests covering memory injection, skill proposal, correction-driven rule capture, transcript-schema parsing, security scanning, trust-ladder transitions in all directions, pin behavior, stale-sweep exemptions, archive roundtrip, and verdict finalization.
 
 ```sh
 git clone https://github.com/ankitkr3/compounded

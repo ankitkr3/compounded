@@ -75,6 +75,22 @@ class SkillProposeTests(unittest.TestCase):
         hint_path = Path(self.tmpdir) / "skills" / ".proposed" / "example-skill" / ".verification_hint"
         self.assertTrue(hint_path.exists())
 
+    def test_approved_saves_directly_to_verified(self) -> None:
+        # One approval gate: the user said yes at capture time, so the skill
+        # is active immediately — no verifier round-trip via .proposed/.
+        result = self.run_propose(
+            "--name", "example-skill",
+            "--approved",
+            "--verification-hint", "next time the user asks to do an example thing this should apply",
+            stdin=VALID_SKILL,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        verified = Path(self.tmpdir) / "skills" / ".verified" / "example-skill" / "SKILL.md"
+        self.assertTrue(verified.exists(), f"missing {verified}")
+        proposed = Path(self.tmpdir) / "skills" / ".proposed" / "example-skill"
+        self.assertFalse(proposed.exists())
+        self.assertIn("active immediately", result.stdout)
+
     def test_invalid_kebab_name_rejected(self) -> None:
         result = self.run_propose(
             "--name", "BadName",

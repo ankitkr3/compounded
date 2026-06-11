@@ -26,8 +26,11 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from _lib import (
     EVENT_PROPOSED,
+    EVENT_VERIFIED,
     PROPOSED,
     PROPOSED_DIR,
+    VERIFIED,
+    VERIFIED_DIR,
     db,
     ensure_layout,
     find_skill_dir,
@@ -52,6 +55,12 @@ def main(argv: list[str]) -> int:
         help="one-sentence description of when a future task qualifies for replay verification",
     )
     parser.add_argument("--force", action="store_true", help="overwrite an existing proposal of the same name")
+    parser.add_argument(
+        "--approved",
+        action="store_true",
+        help="the user explicitly approved this skill at capture time; "
+        "save directly to .verified/ (one approval gate — no verifier round-trip)",
+    )
     args = parser.parse_args(argv)
 
     name = args.name.strip()
@@ -130,7 +139,10 @@ def main(argv: list[str]) -> int:
             )
             return 4
 
-    target_dir = PROPOSED_DIR / name
+    base_dir = VERIFIED_DIR if args.approved else PROPOSED_DIR
+    state = VERIFIED if args.approved else PROPOSED
+
+    target_dir = base_dir / name
     target_dir.mkdir(parents=True, exist_ok=True)
     skill_path = target_dir / "SKILL.md"
     skill_path.write_text(raw, encoding="utf-8")
@@ -139,13 +151,21 @@ def main(argv: list[str]) -> int:
     hint_path.write_text(hint, encoding="utf-8")
 
     with db() as conn:
-        upsert_skill(conn, name=name, state=PROPOSED, verification_hint=hint)
-        log_event(conn, name, EVENT_PROPOSED, {"hint": hint})
+        upsert_skill(conn, name=name, state=state, verification_hint=hint)
+        log_event(conn, name, EVENT_PROPOSED, {"hint": hint, "approved": args.approved})
+        if args.approved:
+            log_event(conn, name, EVENT_VERIFIED, {"reason": "user-approved at capture (one approval gate)"})
 
-    print(
-        f"proposed: {name} → {skill_path.relative_to(target_dir.parent.parent.parent)}\n"
-        f"verification will run on the next applicable task.",
-    )
+    if args.approved:
+        print(
+            f"saved: {name} → {skill_path.relative_to(target_dir.parent.parent.parent)}\n"
+            f"active immediately (user-approved). It earns trust with each clean use.",
+        )
+    else:
+        print(
+            f"proposed: {name} → {skill_path.relative_to(target_dir.parent.parent.parent)}\n"
+            f"verification will run on the next applicable task.",
+        )
     return 0
 
 
