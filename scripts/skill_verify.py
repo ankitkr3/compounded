@@ -215,6 +215,9 @@ def main(argv: list[str]) -> int:
 
     ensure_layout()
     hook_input = read_hook_input()
+    # True when a previous Stop hook already blocked and Claude continued.
+    # Never dispatch a verifier in that state — loop guard.
+    stop_hook_active = bool(hook_input.get("stop_hook_active"))
 
     if not args.check_pending:
         # Reserved for future flags; for now, no-op.
@@ -226,8 +229,9 @@ def main(argv: list[str]) -> int:
 
     # 2. Load remaining pending proposals.
     pending = list_pending_with_hints()
-    if not pending:
-        # Quietly exit. No verifier dispatch needed.
+    if not pending or stop_hook_active:
+        # Quietly exit. No verifier dispatch needed (or we already blocked
+        # once this turn-chain and must not loop).
         sys.stdout.write(json.dumps({"continue": True, "suppressOutput": True}))
         return 0
 
@@ -259,23 +263,24 @@ def main(argv: list[str]) -> int:
         "match_detail": detail,
     })
 
-    # We do not call an LLM here. We surface a small marker in the next-turn
-    # context that suggests Claude run the verifier subagent. Claude Code will
-    # dispatch agents in agents/ when natural-language asked; this is a
-    # deliberate, low-friction nudge.
-    additional_context = (
-        f"\n[compounded] Pending verification: skill `{name}` matches this task "
+    # We do not call an LLM here. We block the stop with an instruction so
+    # Claude dispatches the verifier subagent. (Stop hooks do not honor
+    # additionalContext; decision:"block" + reason is the channel that
+    # actually reaches Claude. stop_hook_active above guards against loops.)
+    reason = (
+        f"[compounded] Pending verification: skill `{name}` matches this task "
         f"(overlap {detail['overlap_words']} words, {detail['overlap_ratio']:.0%}). "
         f"Run the `skill-verifier` subagent against `{proposal_dir}` to graduate or reject it. "
         f"After the subagent returns its JSON verdict, run:\n"
-        f"  python3 ${{CLAUDE_PLUGIN_ROOT}}/scripts/finalize_verification.py "
+        f"  python3 <plugin-root>/scripts/finalize_verification.py "
         f"--name {name} --verdict-json '<the JSON>'\n"
+        f"(resolve <plugin-root> via: ls -d ~/.claude/plugins/cache/*/compounded/* | sort -V | tail -1). "
+        f"If this task is actually unrelated to the skill, end your turn without verifying."
     )
 
     sys.stdout.write(json.dumps({
-        "continue": True,
-        "suppressOutput": False,
-        "additionalContext": additional_context,
+        "decision": "block",
+        "reason": reason,
     }))
     return 0
 

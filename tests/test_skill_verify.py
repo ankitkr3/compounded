@@ -103,5 +103,57 @@ class StaleSweepTests(SkillVerifyTestBase):
         self.assertNotIn("fresh-procedure", rejected)
 
 
+class VerifierDispatchTests(SkillVerifyTestBase):
+    """The dispatch must use decision:"block" — additionalContext is silently
+    dropped for Stop hooks and the verifier would never run."""
+
+    def _setup_matching_proposal_and_transcript(self) -> Path:
+        d = self.skill_verify.PROPOSED_DIR / "express-to-fastify"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "SKILL.md").write_text(
+            "---\nname: express-to-fastify\ndescription: migrate express to fastify\n---\n\n# x\n",
+            encoding="utf-8",
+        )
+        (d / ".verification_hint").write_text(
+            "next time the user asks to migrate an express server to fastify",
+            encoding="utf-8",
+        )
+        p = self.tmp / "transcript.jsonl"
+        events = [
+            {"type": "user", "message": {"role": "user", "content": [
+                {"type": "text", "text": "please migrate my express server to fastify"},
+            ]}},
+        ]
+        p.write_text("\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")
+        return p
+
+    def _run_main(self, hook_input: dict) -> dict:
+        from io import StringIO
+        old_stdin, old_stdout = sys.stdin, sys.stdout
+        try:
+            sys.stdin = StringIO(json.dumps(hook_input))
+            sys.stdout = StringIO()
+            rc = self.skill_verify.main(["--check-pending"])
+            out = sys.stdout.getvalue()
+        finally:
+            sys.stdin, sys.stdout = old_stdin, old_stdout
+        return {"rc": rc, "output": json.loads(out) if out.strip() else {}}
+
+    def test_matching_task_blocks_with_dispatch_reason(self) -> None:
+        p = self._setup_matching_proposal_and_transcript()
+        result = self._run_main({"transcript_path": str(p)})
+        self.assertEqual(result["rc"], 0)
+        self.assertEqual(result["output"].get("decision"), "block")
+        self.assertIn("express-to-fastify", result["output"]["reason"])
+        self.assertIn("skill-verifier", result["output"]["reason"])
+
+    def test_dispatch_suppressed_when_stop_hook_active(self) -> None:
+        p = self._setup_matching_proposal_and_transcript()
+        result = self._run_main({"transcript_path": str(p), "stop_hook_active": True})
+        self.assertEqual(result["rc"], 0)
+        self.assertNotIn("decision", result["output"])
+        self.assertTrue(result["output"].get("suppressOutput"))
+
+
 if __name__ == "__main__":
     unittest.main()

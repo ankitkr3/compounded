@@ -18,7 +18,10 @@ There are two capture modes:
 
 ## 0. Did the auto-proposer nudge you?
 
-If you saw `[compounded] Auto-propose threshold reached ...` in the previous turn's additional context, the Stop hook detected high-signal activity (multi-tool, multi-file, recovery, or planned execution) — that is a **procedure mode** nudge. If you saw `[compounded] Correction detected ...`, that is a **rule mode** nudge.
+Nudges arrive two ways:
+
+- **Rule mode** — your turn was interrupted with a `[compounded] Correction detected ...` instruction (the Stop hook blocked the stop and fed it to you). Apply section 1R.
+- **Procedure mode** — the user saw a `[compounded] Auto-propose threshold reached ...` message and relayed it (e.g. "save this as a skill"). Apply sections 1-2.
 
 Either marker is a *suggestion*, not an instruction. **Still apply the relevant qualifying bar.** The auto-proposer is conservative but it doesn't know whether the capture is generalizable. Many high-signal turns are one-off chores, and many corrections are one-off taste calls.
 

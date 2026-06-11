@@ -8,7 +8,10 @@ proposing as a compounded skill.
 
 Conservative by design:
 - The hook itself NEVER writes to .proposed/.
-- It only emits additionalContext when heuristic signals cross a threshold.
+- Delivery (Stop hooks do not honor additionalContext):
+    rule capture      -> decision:"block" + reason, so the instruction reaches
+                         Claude (guarded by stop_hook_active to prevent loops)
+    procedure capture -> systemMessage shown to the user (no forced turn)
 - Claude decides whether to actually invoke `compounded-author` and propose.
 
 Signals we count (in the last assistant turn):
@@ -333,9 +336,10 @@ def _suggested_name(signals: dict) -> str:
     return "your-skill-name"
 
 
-def build_suggestion(signals: dict) -> str:
-    if signals.get("capture_kind") == "rule":
-        return _build_rule_suggestion(signals)
+def build_procedure_message(signals: dict) -> str:
+    """User-facing hint (systemMessage). Stop hooks cannot inject context into
+    Claude without blocking the stop, and procedure nudges fire too often to
+    justify forcing an extra turn — so we surface them to the user instead."""
     name_hint = _suggested_name(signals)
     bullets = []
     if signals["tool_uses"] >= THRESHOLD_TOOL_USES:
@@ -351,17 +355,22 @@ def build_suggestion(signals: dict) -> str:
 
     summary = ", ".join(bullets) if bullets else "non-trivial procedure"
     return (
-        f"\n[compounded] Auto-propose threshold reached "
-        f"({summary}; score={signals['score']}). "
-        f"If the procedure you just completed is generalizable to similar future tasks, "
-        f"invoke the `compounded-author` skill to save it as `{name_hint}` (rename as appropriate). "
-        f"If it's a one-off, ignore this nudge.\n"
+        f"[compounded] Auto-propose threshold reached ({summary}; score={signals['score']}). "
+        f"If this procedure is worth keeping, say \"save this as a skill\" "
+        f"(suggested name: {name_hint})."
     )
 
 
-def _build_rule_suggestion(signals: dict) -> str:
+def build_rule_reason(signals: dict) -> str:
+    """Instruction fed to Claude via the Stop-hook block channel (`reason`).
+
+    `additionalContext` is not honored for Stop hooks; `decision: "block"`
+    with a `reason` is the documented way to get an instruction in front of
+    Claude after a turn ends. Corrections are rare and high-value, so the
+    forced continuation is justified here (and stop_hook_active guards loops).
+    """
     return (
-        f"\n[compounded] Correction detected — the user corrected your previous "
+        f"[compounded] Correction detected — the user corrected your previous "
         f"approach and you then did {signals['tool_uses']} tool call(s) of corrective work. "
         f"This may encode a reusable behavioral rule (the delta between what the user "
         f"asked, what you did, and how they corrected you). "
@@ -369,7 +378,7 @@ def _build_rule_suggestion(signals: dict) -> str:
         f"lesson, ask the user to approve it via AskUserQuestion BEFORE saving, and if "
         f"approved propose it as a `kind: rule` skill. "
         f"If the correction was a one-off (specific value, path, or taste call with no "
-        f"general trigger), ignore this nudge.\n"
+        f"general trigger), do nothing further and end your turn."
     )
 
 
@@ -390,6 +399,9 @@ def main() -> int:
     ensure_layout()
     hook_input = read_hook_input()
     transcript_path = hook_input.get("transcript_path", "")
+    # True when this Stop fires after a previous Stop hook already blocked
+    # and Claude continued. Never nudge again in that state — loop guard.
+    stop_hook_active = bool(hook_input.get("stop_hook_active"))
 
     # If a proposal is already pending, don't pile up. The other Stop hook
     # (skill_verify.py) is responsible for moving those forward.
@@ -416,14 +428,23 @@ def main() -> int:
         **signals,
     })
 
-    if not signals["fire"]:
+    if not signals["fire"] or stop_hook_active:
         sys.stdout.write(json.dumps({"continue": True, "suppressOutput": True}))
         return 0
 
+    if signals["capture_kind"] == "rule":
+        # Block the stop so the instruction actually reaches Claude.
+        sys.stdout.write(json.dumps({
+            "decision": "block",
+            "reason": build_rule_reason(signals),
+        }))
+        return 0
+
+    # Procedure capture: surface a hint to the user; never force a turn.
     sys.stdout.write(json.dumps({
         "continue": True,
         "suppressOutput": False,
-        "additionalContext": build_suggestion(signals),
+        "systemMessage": build_procedure_message(signals),
     }))
     return 0
 

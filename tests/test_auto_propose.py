@@ -312,11 +312,15 @@ class AutoProposeMainTests(unittest.TestCase):
         self._write_transcript(events)
         result = self._run({"transcript_path": str(self.transcript), "session_id": "abc"})
         self.assertEqual(result["rc"], 0)
-        self.assertIn("additionalContext", result["output"])
-        self.assertIn("Auto-propose threshold reached", result["output"]["additionalContext"])
+        # Procedure capture surfaces to the USER via systemMessage and never
+        # blocks the stop (additionalContext is not honored for Stop hooks).
+        self.assertNotIn("decision", result["output"])
+        self.assertIn("systemMessage", result["output"])
+        self.assertIn("Auto-propose threshold reached", result["output"]["systemMessage"])
+        self.assertIn("save this as a skill", result["output"]["systemMessage"])
 
-    def test_correction_session_emits_rule_nudge(self) -> None:
-        events = [
+    def _correction_events(self) -> list[dict]:
+        return [
             _user("no, that's wrong — web-search for the latest embedding model first."),
             _assistant(tool_uses=[
                 ("WebSearch", {"query": "latest gemini embedding model 2026"}),
@@ -324,14 +328,31 @@ class AutoProposeMainTests(unittest.TestCase):
             ]),
             _tool_result(),
         ]
-        self._write_transcript(events)
+
+    def test_correction_session_blocks_with_rule_reason(self) -> None:
+        # Rule capture must use the Stop-hook block channel — additionalContext
+        # is silently dropped for Stop hooks and would never reach Claude.
+        self._write_transcript(self._correction_events())
         result = self._run({"transcript_path": str(self.transcript), "session_id": "abc"})
         self.assertEqual(result["rc"], 0)
-        self.assertIn("additionalContext", result["output"])
-        ctx = result["output"]["additionalContext"]
-        self.assertIn("Correction detected", ctx)
-        self.assertIn("RULE MODE", ctx)
-        self.assertIn("AskUserQuestion", ctx)  # approval gate is part of the nudge
+        self.assertEqual(result["output"].get("decision"), "block")
+        reason = result["output"]["reason"]
+        self.assertIn("Correction detected", reason)
+        self.assertIn("RULE MODE", reason)
+        self.assertIn("AskUserQuestion", reason)  # approval gate is part of the nudge
+
+    def test_rule_block_suppressed_when_stop_hook_active(self) -> None:
+        # Loop guard: when this Stop fires after a previous block, never
+        # block again — otherwise blocked-stop -> work -> blocked-stop forever.
+        self._write_transcript(self._correction_events())
+        result = self._run({
+            "transcript_path": str(self.transcript),
+            "session_id": "abc",
+            "stop_hook_active": True,
+        })
+        self.assertEqual(result["rc"], 0)
+        self.assertNotIn("decision", result["output"])
+        self.assertTrue(result["output"].get("suppressOutput"))
 
     def test_pending_proposal_debounces(self) -> None:
         # Create a pre-existing .proposed/foo
