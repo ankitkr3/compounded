@@ -26,7 +26,17 @@ Scoring (additive, threshold-based):
   +2  recovery == True
   +1  plan_used == True
   ----------
-  fire if score >= 3 AND correction == False
+  procedure capture: fire if score >= 3 AND correction == False
+  rule capture:      fire if correction == True AND tool_uses >= 1
+
+Two capture kinds:
+  procedure — a successful multi-step task worth saving as a replayable
+              procedure (the original compounded behavior).
+  rule      — the user corrected Claude and Claude then did real work to
+              fix it. The intent→mistake→correction delta is a behavioral
+              lesson worth saving as a trigger-keyed rule skill
+              (kind: rule). Corrections are the highest-signal learning
+              events; they trigger capture rather than suppress it.
 
 Debounce:
 - If any .proposed/ skill already exists, do not auto-propose (avoid pile-up).
@@ -62,6 +72,7 @@ THRESHOLD_TOOL_USES = 5
 THRESHOLD_EDIT_FILES = 2
 THRESHOLD_BASH = 2
 SCORE_TO_FIRE = 3
+RULE_MIN_TOOL_USES = 1  # corrective turn must show real work, not just chat
 MAX_TRANSCRIPT_BYTES = 2 * 1024 * 1024  # don't OOM on huge sessions
 TRANSCRIPT_TAIL_LINES = 400
 
@@ -126,6 +137,21 @@ def _iter_transcript(transcript_path: str) -> Iterable[dict]:
             continue
 
 
+def _content(ev: dict) -> object:
+    """Return an event's content blocks, normalizing the transcript schema.
+
+    Claude Code's session transcript wraps each message under a top-level
+    "message" key (``{"type": "assistant", "message": {"content": [...]}}``),
+    whereas the raw Anthropic Messages shape carries ``content`` at the top
+    level. We read from ``message.content`` when present and fall back to the
+    top-level key so both shapes work.
+    """
+    msg = ev.get("message")
+    if isinstance(msg, dict) and "content" in msg:
+        return msg.get("content")
+    return ev.get("content")
+
+
 def _split_into_turns(events: list[dict]) -> tuple[list[dict], dict | None]:
     """Return (last_assistant_turn_events, prior_user_message).
 
@@ -152,7 +178,7 @@ def _split_into_turns(events: list[dict]) -> tuple[list[dict], dict | None]:
 
 def _is_tool_result_only(ev: dict) -> bool:
     """True if a 'user' message is just a tool_result wrapper from Claude Code."""
-    content = ev.get("content")
+    content = _content(ev)
     if not isinstance(content, list):
         return False
     return all(
@@ -163,7 +189,7 @@ def _is_tool_result_only(ev: dict) -> bool:
 
 def _extract_text(ev: dict) -> str:
     """Pull free text out of an event regardless of content shape."""
-    content = ev.get("content")
+    content = _content(ev)
     if isinstance(content, str):
         return content
     if isinstance(content, list):
@@ -184,7 +210,7 @@ def _iter_tool_uses(turn_events: list[dict]) -> Iterable[dict]:
     for ev in turn_events:
         if (ev.get("type") or ev.get("role")) != "assistant":
             continue
-        content = ev.get("content")
+        content = _content(ev)
         if not isinstance(content, list):
             continue
         for item in content:
@@ -195,7 +221,7 @@ def _iter_tool_uses(turn_events: list[dict]) -> Iterable[dict]:
 def _iter_tool_results(turn_events: list[dict]) -> Iterable[dict]:
     """Yield every tool_result content-block in the turn."""
     for ev in turn_events:
-        content = ev.get("content")
+        content = _content(ev)
         if not isinstance(content, list):
             continue
         for item in content:
@@ -218,7 +244,7 @@ def _has_recovery(turn_events: list[dict]) -> bool:
     """True if at least one tool_result was an error followed later by a non-error of the same tool."""
     errored_tools: list[str] = []
     for ev in turn_events:
-        content = ev.get("content")
+        content = _content(ev)
         if not isinstance(content, list):
             continue
         for item in content:
@@ -269,11 +295,20 @@ def score_turn(turn_events: list[dict], prior_user: dict | None) -> dict:
     if plan_used:
         score += 1
 
-    fire = score >= SCORE_TO_FIRE and not correction
+    # A correction followed by real corrective work is the highest-signal
+    # learning event: capture the lesson as a rule. Otherwise a high-signal
+    # clean turn captures as a procedure (the original behavior).
+    if correction and len(tool_uses) >= RULE_MIN_TOOL_USES:
+        capture_kind = "rule"
+    elif score >= SCORE_TO_FIRE and not correction:
+        capture_kind = "procedure"
+    else:
+        capture_kind = None
 
     return {
         "score": score,
-        "fire": fire,
+        "fire": capture_kind is not None,
+        "capture_kind": capture_kind,
         "tool_uses": len(tool_uses),
         "edit_files": sorted(edit_files),
         "bash_count": bash_count,
@@ -299,6 +334,8 @@ def _suggested_name(signals: dict) -> str:
 
 
 def build_suggestion(signals: dict) -> str:
+    if signals.get("capture_kind") == "rule":
+        return _build_rule_suggestion(signals)
     name_hint = _suggested_name(signals)
     bullets = []
     if signals["tool_uses"] >= THRESHOLD_TOOL_USES:
@@ -319,6 +356,20 @@ def build_suggestion(signals: dict) -> str:
         f"If the procedure you just completed is generalizable to similar future tasks, "
         f"invoke the `compounded-author` skill to save it as `{name_hint}` (rename as appropriate). "
         f"If it's a one-off, ignore this nudge.\n"
+    )
+
+
+def _build_rule_suggestion(signals: dict) -> str:
+    return (
+        f"\n[compounded] Correction detected — the user corrected your previous "
+        f"approach and you then did {signals['tool_uses']} tool call(s) of corrective work. "
+        f"This may encode a reusable behavioral rule (the delta between what the user "
+        f"asked, what you did, and how they corrected you). "
+        f"Invoke the `compounded-author` skill in RULE MODE: extract the generalizable "
+        f"lesson, ask the user to approve it via AskUserQuestion BEFORE saving, and if "
+        f"approved propose it as a `kind: rule` skill. "
+        f"If the correction was a one-off (specific value, path, or taste call with no "
+        f"general trigger), ignore this nudge.\n"
     )
 
 

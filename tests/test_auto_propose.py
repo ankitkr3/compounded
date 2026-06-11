@@ -34,6 +34,17 @@ def _assistant(tool_uses: list[tuple[str, dict]] | None = None, text: str = "") 
     return {"type": "assistant", "content": content}
 
 
+def _wrap(ev: dict) -> dict:
+    """Re-shape a top-level-content event into Claude Code's transcript schema.
+
+    Real session transcripts nest the message body under a "message" key, e.g.
+    ``{"type": "assistant", "message": {"role": ..., "content": [...]}}``. The
+    scorer must read content from there, not from the top level.
+    """
+    role = ev.get("type") or ev.get("role")
+    return {"type": role, "message": {"role": role, "content": ev.get("content")}}
+
+
 class AutoProposeScorerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = Path(tempfile.mkdtemp(prefix="compounded-test-"))
@@ -102,9 +113,40 @@ class AutoProposeScorerTests(unittest.TestCase):
         # 3 tool uses + 1 edit + 2 bash + recovery (+2) → score 3, fires
         self.assertGreaterEqual(signals["score"], self.auto_propose.SCORE_TO_FIRE)
 
-    def test_correction_kills_proposal(self) -> None:
+    def test_correction_with_work_captures_rule(self) -> None:
+        # A correction followed by real corrective work is the primary
+        # learning trigger: it fires in RULE mode, not procedure mode.
         events = [
-            _user("no, that's wrong. undo all of it and try again."),
+            _user("no, that's wrong. search the web for the latest model first."),
+            _assistant(tool_uses=[
+                ("WebSearch", {"query": "latest gemini embedding model"}),
+                ("Edit", {"file_path": "/a.py", "old_string": "x", "new_string": "y"}),
+                ("Bash", {"command": "pytest"}),
+            ]),
+            _tool_result(),
+        ]
+        turn, prior = self.auto_propose._split_into_turns(events)
+        signals = self.auto_propose.score_turn(turn, prior)
+        self.assertTrue(signals["correction"])
+        self.assertTrue(signals["fire"])
+        self.assertEqual(signals["capture_kind"], "rule")
+
+    def test_correction_without_work_stays_silent(self) -> None:
+        # A correction answered with plain text (no corrective tool work)
+        # has nothing concrete to learn from yet.
+        events = [
+            _user("no, that's wrong."),
+            _assistant(text="You're right, sorry — here is the corrected explanation."),
+        ]
+        turn, prior = self.auto_propose._split_into_turns(events)
+        signals = self.auto_propose.score_turn(turn, prior)
+        self.assertTrue(signals["correction"])
+        self.assertFalse(signals["fire"])
+        self.assertIsNone(signals["capture_kind"])
+
+    def test_clean_high_signal_turn_captures_procedure(self) -> None:
+        events = [
+            _user("set up the project scaffolding"),
             _assistant(tool_uses=[
                 ("Edit", {"file_path": "/a.py", "old_string": "x", "new_string": "y"}),
                 ("Edit", {"file_path": "/b.py", "old_string": "x", "new_string": "y"}),
@@ -116,8 +158,9 @@ class AutoProposeScorerTests(unittest.TestCase):
         ]
         turn, prior = self.auto_propose._split_into_turns(events)
         signals = self.auto_propose.score_turn(turn, prior)
-        self.assertTrue(signals["correction"])
-        self.assertFalse(signals["fire"])  # kill switch
+        self.assertFalse(signals["correction"])
+        self.assertTrue(signals["fire"])
+        self.assertEqual(signals["capture_kind"], "procedure")
 
     def test_distinct_files_counted_not_duplicate_edits(self) -> None:
         events = [
@@ -152,6 +195,57 @@ class AutoProposeScorerTests(unittest.TestCase):
         self.assertEqual(len(tool_uses), 2)
         # Prior user is the real user prompt.
         self.assertIn("refactor", self.auto_propose._extract_text(prior).lower())
+
+
+class AutoProposeTranscriptSchemaTests(unittest.TestCase):
+    """Regression: real Claude Code transcripts nest content under "message".
+
+    Before the fix, the scorer read ``ev.get("content")`` at the top level,
+    which is always absent in real transcripts — so every session scored 0 and
+    the proposer never fired. These tests feed the wrapped schema.
+    """
+
+    def setUp(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp(prefix="compounded-test-"))
+        os.environ["COMPOUNDED_HOME"] = str(self.tmp)
+        for mod in list(sys.modules):
+            if mod in ("auto_propose", "_lib"):
+                del sys.modules[mod]
+        import auto_propose
+        self.auto_propose = auto_propose
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.tmp, ignore_errors=True)
+        os.environ.pop("COMPOUNDED_HOME", None)
+
+    def test_wrapped_schema_counts_tool_uses(self) -> None:
+        events = [
+            _wrap(_user("refactor the auth module across three files")),
+            _wrap(_assistant(tool_uses=[
+                ("Read", {"file_path": "/auth.py"}),
+                ("Edit", {"file_path": "/auth.py", "old_string": "x", "new_string": "y"}),
+                ("Edit", {"file_path": "/user.py", "old_string": "x", "new_string": "y"}),
+                ("Edit", {"file_path": "/session.py", "old_string": "x", "new_string": "y"}),
+                ("Bash", {"command": "pytest"}),
+            ])),
+            _wrap(_tool_result()),
+        ]
+        turn, prior = self.auto_propose._split_into_turns(events)
+        signals = self.auto_propose.score_turn(turn, prior)
+        self.assertGreaterEqual(signals["tool_uses"], 5)
+        self.assertGreaterEqual(len(signals["edit_files"]), 2)
+        self.assertTrue(signals["fire"])
+
+    def test_wrapped_correction_signal_read_from_message(self) -> None:
+        events = [
+            _wrap(_user("no, that's wrong. undo it.")),
+            _wrap(_assistant(tool_uses=[("Edit", {"file_path": "/a.py", "old_string": "x", "new_string": "y"})])),
+            _wrap(_tool_result()),
+        ]
+        turn, prior = self.auto_propose._split_into_turns(events)
+        signals = self.auto_propose.score_turn(turn, prior)
+        self.assertTrue(signals["correction"])
+        self.assertEqual(signals["capture_kind"], "rule")
 
 
 class AutoProposeMainTests(unittest.TestCase):
@@ -220,6 +314,24 @@ class AutoProposeMainTests(unittest.TestCase):
         self.assertEqual(result["rc"], 0)
         self.assertIn("additionalContext", result["output"])
         self.assertIn("Auto-propose threshold reached", result["output"]["additionalContext"])
+
+    def test_correction_session_emits_rule_nudge(self) -> None:
+        events = [
+            _user("no, that's wrong — web-search for the latest embedding model first."),
+            _assistant(tool_uses=[
+                ("WebSearch", {"query": "latest gemini embedding model 2026"}),
+                ("Edit", {"file_path": "/embed.py", "old_string": "old-model", "new_string": "new-model"}),
+            ]),
+            _tool_result(),
+        ]
+        self._write_transcript(events)
+        result = self._run({"transcript_path": str(self.transcript), "session_id": "abc"})
+        self.assertEqual(result["rc"], 0)
+        self.assertIn("additionalContext", result["output"])
+        ctx = result["output"]["additionalContext"]
+        self.assertIn("Correction detected", ctx)
+        self.assertIn("RULE MODE", ctx)
+        self.assertIn("AskUserQuestion", ctx)  # approval gate is part of the nudge
 
     def test_pending_proposal_debounces(self) -> None:
         # Create a pre-existing .proposed/foo

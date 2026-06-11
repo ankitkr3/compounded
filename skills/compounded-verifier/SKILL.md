@@ -18,7 +18,33 @@ You will receive:
 3. The final state of the just-completed task: file diffs, key tool calls, the user's original prompt, and the user's last message
 4. The proposal's age and any prior verification attempts
 
-## Your decision rubric
+## Two kinds of proposal
+
+Check the frontmatter for a `kind:` field first:
+
+- **No `kind`, or `kind: procedure`** — a replayable procedure. Apply the procedure rubric below.
+- **`kind: rule`** — a behavioral rule learned from a user correction. Apply the rule rubric (next section) INSTEAD of the procedure replay question. Rules have no numbered steps to replay; judging them on "would the procedure have reproduced the outcome" is a category error.
+
+## Rule rubric (`kind: rule` only)
+
+Hard fails:
+
+- Malformed frontmatter or missing required fields → **FAIL**, `malformed-frontmatter`
+- The "rule" is a one-off bound to session-specific values (a literal path, port, repo, or person) with no generalizable trigger → **FAIL**, `not-abstracted`
+- The trigger in `description` is so broad it would fire on every task ("whenever the user asks for anything") → **FAIL**, `vague-procedure`
+- Contradicts the user's CLAUDE.md or USER.md → **FAIL**, `conflicts-with-user-rules`
+- Duplicates an existing skill → **FAIL**, `redundant`
+
+Conditional pass — ask:
+
+> If this rule had been active during the just-completed task (or the originating correction), would following it have avoided the correction or produced behavior the user wanted?
+
+- Yes, and the trigger is crisp → **PASS**
+- Yes, but trigger could be tighter → **PASS-with-notes**
+- Unsure → **PASS-low-confidence** (the trust gradient demotes rules that misfire)
+- No, the rule misstates what the user actually wanted → **FAIL**, `outcome-mismatch`
+
+## Procedure rubric
 
 Apply these in order. The first one that applies determines your verdict.
 

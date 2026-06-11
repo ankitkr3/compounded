@@ -40,9 +40,11 @@ from _lib import (
     REJECTED_DIR,
     db,
     ensure_layout,
+    is_pinned,
     jsonl_log,
     log_event,
     now_ts,
+    parse_frontmatter,
     read_hook_input,
     upsert_skill,
 )
@@ -94,8 +96,25 @@ def matches_task(hint: str, task_text: str) -> tuple[bool, dict]:
     }
 
 
+def _is_rule_skill(skill_md: Path) -> bool:
+    """True if the proposal's frontmatter declares `kind: rule`.
+
+    Rule skills capture behavioral lessons from user corrections. Their
+    trigger condition may legitimately not recur within the procedure TTL,
+    so the stale sweep exempts them (as it does pinned skills).
+    """
+    try:
+        fields, _ = parse_frontmatter(skill_md.read_text(encoding="utf-8", errors="replace"))
+    except OSError:
+        return False
+    return bool(fields) and str(fields.get("kind", "")).strip().lower() == "rule"
+
+
 def auto_reject_stale() -> list[str]:
-    """Move stale proposals to .rejected/. Returns list of names rejected."""
+    """Move stale proposals to .rejected/. Returns list of names rejected.
+
+    Pinned proposals and `kind: rule` proposals are exempt from the sweep.
+    """
     if not PROPOSED_DIR.exists():
         return []
     cutoff = now_ts() - PROPOSAL_TTL_DAYS * 86400
@@ -103,6 +122,8 @@ def auto_reject_stale() -> list[str]:
     REJECTED_DIR.mkdir(parents=True, exist_ok=True)
     for child in PROPOSED_DIR.iterdir():
         if not child.is_dir() or not (child / "SKILL.md").exists():
+            continue
+        if is_pinned(child.name) or _is_rule_skill(child / "SKILL.md"):
             continue
         # Use mtime of the SKILL.md (set when proposed).
         mtime = (child / "SKILL.md").stat().st_mtime
@@ -160,9 +181,14 @@ def extract_task_text(hook_input: dict) -> str:
                         obj = json.loads(line)
                     except json.JSONDecodeError:
                         continue
-                    # Pull text from user/assistant messages.
-                    role = obj.get("role") or obj.get("type")
-                    content = obj.get("content")
+                    # Pull text from user/assistant messages. Claude Code
+                    # transcripts nest the message body under a "message"
+                    # key; fall back to top-level for the raw Messages shape.
+                    msg = obj.get("message")
+                    if isinstance(msg, dict) and "content" in msg:
+                        content = msg.get("content")
+                    else:
+                        content = obj.get("content")
                     if isinstance(content, str):
                         parts.append(content)
                     elif isinstance(content, list):

@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin.json",
   "name": "compounded",
-  "version": "1.1.0",
-  "description": "Turns your agent into a trainable employee. Skills earn autonomy through demonstrated reliability — proposed → verified → trusted → autonomous. No daemon. No cloud.",
+  "version": "1.2.0",
+  "description": "Turns your agent into a trainable employee. Learns rules from your corrections (with your approval), and skills earn autonomy through demonstrated reliability — proposed → verified → trusted → autonomous. No daemon. No cloud.",
   "author": {
     "name": "Ankit Kumar",
     "url": "https://github.com/ankitkr3"

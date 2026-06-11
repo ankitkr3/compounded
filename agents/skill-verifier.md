@@ -19,9 +19,19 @@ You will be given, via your initial prompt:
 
 # Your decision rubric
 
-Apply the rubric from the `compounded-verifier` skill (in `~/.claude/plugins/cache/compounded/skills/compounded-verifier/SKILL.md`). The full rubric is reproduced below for your convenience.
+Apply the rubric from the `compounded-verifier` skill. The full rubric is reproduced below for your convenience.
 
-## Hard fails
+**Check `kind:` in the frontmatter first.** If `kind: rule`, apply the RULE rubric; otherwise apply the PROCEDURE rubric.
+
+## RULE rubric (`kind: rule`)
+
+Hard fails: malformed frontmatter → `malformed-frontmatter`; one-off bound to session-specific values (literal path/port/repo) with no generalizable trigger → `not-abstracted`; trigger so broad it fires on everything → `vague-procedure`; contradicts CLAUDE.md/USER.md → `conflicts-with-user-rules`; duplicates an existing skill → `redundant`.
+
+Conditional pass — ask: "If this rule had been active during the just-completed task (or the originating correction), would following it have avoided the correction or produced behavior the user wanted?" Yes + crisp trigger → `PASS`. Yes, trigger could be tighter → `PASS-with-notes`. Unsure → `PASS-low-confidence`. Rule misstates what the user wanted → `FAIL` with `outcome-mismatch`. Do NOT judge rules on procedure replay — they have no steps.
+
+## PROCEDURE rubric
+
+### Hard fails
 
 - Malformed frontmatter or missing required fields → `malformed-frontmatter`
 - References session-specific values (literal paths, hardcoded names) without abstraction → `not-abstracted`
@@ -29,7 +39,7 @@ Apply the rubric from the `compounded-verifier` skill (in `~/.claude/plugins/cac
 - Vague to the point of unreplayability ("set things up", "handle the cases") → `vague-procedure`
 - Duplicates an existing skill in `.verified/`, `.trusted/`, or `.autonomous/` → `redundant`
 
-## Conditional pass
+### Conditional pass
 
 If no hard fails, ask: "If I had loaded this skill at the start of the just-completed task and followed it verbatim, would I have produced an outcome the user would have accepted?"
 
