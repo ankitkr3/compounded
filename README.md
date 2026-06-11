@@ -2,11 +2,11 @@
 
 <br />
 
-# `compounded`
+<img src="assets/logo.svg" width="560" alt="compounded — skills that earn trust, and compound" />
 
 ### Your AI agent gets better at *you* the longer you use it.
 
-Skills earn autonomy through demonstrated reliability — they start `.proposed`, prove themselves to become `.verified`, build a track record to reach `.trusted`, and finally graduate to `.autonomous`. **No daemon. No cloud. No re-explaining.**
+Correct Claude once — it asks to remember the lesson, then never makes that mistake again. Skills earn autonomy through demonstrated reliability — they start `.proposed`, prove themselves to become `.verified`, build a track record to reach `.trusted`, and finally graduate to `.autonomous`. **No daemon. No cloud. No re-explaining.**
 
 <br />
 
@@ -25,6 +25,22 @@ Skills earn autonomy through demonstrated reliability — they start `.proposed`
 </div>
 
 ---
+
+## What is this? (the no-jargon version)
+
+Think of Claude as a **smart new employee with amnesia** — brilliant, but every morning it forgets everything you taught it yesterday. You end up correcting the same mistakes over and over.
+
+compounded fixes that, the same way you'd train a real new hire:
+
+<div align="center">
+<img src="assets/how-it-works.svg" width="960" alt="How compounded works: you correct Claude, compounded notices, it asks your approval, the rule is remembered, and next time Claude gets it right." />
+</div>
+
+**A real example.** You ask Claude to use the *latest* Gemini embedding model. It picks an old one from memory. You say: *"No — search the web first, then pick the latest."* compounded catches that correction and asks: **"Save this rule?"** You tap Yes. From now on, whenever you ask for the latest *anything*, Claude searches the web first — without being told.
+
+And it's not blind trust: every saved lesson starts on probation and **earns** more freedom each time it works — or loses it the moment it doesn't.
+
+<br />
 
 ## Why compounded?
 
@@ -68,17 +84,9 @@ Restart Claude Code. That's it.
 
 ## The trust ladder
 
-```
-   ┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
-   │  .proposed   │───▶│  .verified   │───▶│   .trusted   │───▶│ .autonomous  │
-   │              │    │              │    │              │    │              │
-   │ awaiting     │    │  1 verifier  │    │  3 clean     │    │  10+ uses,   │
-   │ verification │    │   PASS       │    │  uses        │    │  5+ clean    │
-   └──────────────┘    └──────────────┘    └──────────────┘    └──────────────┘
-         ▲                    ▲                    ▲                    │
-         │                    │                    │                    │
-         └────────── correction = one tier down ───┴────────────────────┘
-```
+<div align="center">
+<img src="assets/trust-ladder.svg" width="930" alt="The trust ladder: proposed to verified to trusted to autonomous. One correction moves a skill one level down." />
+</div>
 
 | Tier | Behavior | Activation |
 |---|---|---|
@@ -131,11 +139,22 @@ Skills that pass start at `.verified` and graduate by demonstrating reliability 
 
 <br />
 
+## Learns from your corrections (v1.2)
+
+Corrections are the highest-signal teaching moments — so compounded treats them as the **primary** learning trigger, not noise:
+
+1. **You correct Claude** ("no — web-search for the latest model first") and Claude does the corrective work
+2. The Stop hook spots the correction and nudges Claude: *the delta between what you asked, what it did, and how you corrected it is a lesson*
+3. Claude extracts the generalizable rule and **asks you to approve it before anything is saved**
+4. Approved rules become trigger-keyed `kind: rule` skills — *"when the user asks for the latest X, web-search first"* — that fire on matching future requests and climb the same trust ladder
+
+One-off corrections ("use port 3001 here") are deliberately ignored — only rules with a clear, general trigger get proposed. Rule skills are also exempt from the 30-day stale sweep, since "ask for the latest model" might legitimately not come up again for a while.
+
 ## Auto-propose (v1.1)
 
 You don't have to remember to save things. After every turn, the Stop hook scores what just happened — tool calls, distinct files edited, shell commands, recovery from failure, planned execution. When the score crosses the threshold, the agent gets a nudge to consider authoring a skill. The agent still decides whether to propose (one-off chores get ignored), but the *prompt to consider* is automatic.
 
-Quiet by design: routine turns produce zero output. You only see anything when there's real signal. Edit `~/.claude/compounded/logs/auto_propose.jsonl` to see what fired and what didn't — useful for tuning if you want to.
+Quiet by design: routine turns produce zero output. You only see anything when there's real signal. Check `~/.claude/compounded/logs/auto_propose.jsonl` to see what fired and what didn't — each entry now records a `capture_kind` (`procedure` or `rule`) — useful for tuning if you want to.
 
 <br />
 
@@ -252,7 +271,7 @@ To switch to Sonnet for higher-accuracy verification (~5× the cost), edit `~/.c
 
 ## Tested
 
-22 unit tests covering memory injection, skill proposal, security scanning, trust-ladder transitions in all directions, pin behavior, archive roundtrip, and verdict finalization.
+43 unit tests covering memory injection, skill proposal, correction-driven rule capture, transcript-schema parsing, security scanning, trust-ladder transitions in all directions, pin behavior, stale-sweep exemptions, archive roundtrip, and verdict finalization.
 
 ```sh
 git clone https://github.com/ankitkr3/compounded

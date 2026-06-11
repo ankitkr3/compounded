@@ -1,0 +1,83 @@
+<svg width="930" height="290" viewBox="0 0 930 290" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The trust ladder: proposed, then verified, then trusted, then autonomous. One correction moves a skill one level down.">
+  <defs>
+    <style>
+      .t  { font-family: ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; }
+      .tier { font-size: 17px; font-weight: 800; }
+      .sub  { font-size: 12px; font-weight: 500; fill: #8B949E; }
+      .lbl  { font-size: 11.5px; font-weight: 600; fill: #8B949E; }
+    </style>
+    <marker id="arrUp" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#6E7681"/>
+    </marker>
+    <marker id="arrDown" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#F85149"/>
+    </marker>
+  </defs>
+
+  <rect x="1" y="1" width="928" height="288" rx="16" fill="#0F141A" stroke="#2D333B" stroke-width="2"/>
+
+  <!-- ====== .proposed ====== -->
+  <g>
+    <rect x="30" y="120" width="190" height="86" rx="12" fill="#161B22" stroke="#6E7681" stroke-width="1.5"/>
+    <rect x="30" y="120" width="190" height="86" rx="12" fill="none" stroke="#6E7681" stroke-width="3" opacity="0">
+      <animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.2;0.25;1" dur="8s" repeatCount="indefinite"/>
+    </rect>
+    <text x="125" y="152" text-anchor="middle" class="t tier" fill="#ADB5BD">.proposed</text>
+    <text x="125" y="174" text-anchor="middle" class="t sub">a new idea, written down</text>
+    <text x="125" y="191" text-anchor="middle" class="t sub">— not trusted yet</text>
+  </g>
+  <line x1="224" y1="148" x2="251" y2="138" stroke="#6E7681" stroke-width="2" marker-end="url(#arrUp)"/>
+  <text x="350" y="90" text-anchor="middle" class="t lbl">↑ passes 1 check</text>
+
+  <!-- ====== .verified ====== -->
+  <g>
+    <rect x="255" y="100" width="190" height="86" rx="12" fill="#161B22" stroke="#58A6FF" stroke-width="1.5"/>
+    <rect x="255" y="100" width="190" height="86" rx="12" fill="none" stroke="#58A6FF" stroke-width="3" opacity="0">
+      <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.2;0.25;0.45;0.5;1" dur="8s" repeatCount="indefinite"/>
+    </rect>
+    <text x="350" y="132" text-anchor="middle" class="t tier" fill="#58A6FF">.verified</text>
+    <text x="350" y="154" text-anchor="middle" class="t sub">proven to work once,</text>
+    <text x="350" y="171" text-anchor="middle" class="t sub">on a real task</text>
+  </g>
+  <line x1="449" y1="128" x2="476" y2="118" stroke="#6E7681" stroke-width="2" marker-end="url(#arrUp)"/>
+  <text x="575" y="70" text-anchor="middle" class="t lbl">↑ 3 clean uses</text>
+
+  <!-- ====== .trusted ====== -->
+  <g>
+    <rect x="480" y="80" width="190" height="86" rx="12" fill="#161B22" stroke="#BC8CFF" stroke-width="1.5"/>
+    <rect x="480" y="80" width="190" height="86" rx="12" fill="none" stroke="#BC8CFF" stroke-width="3" opacity="0">
+      <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.45;0.5;0.7;0.75;1" dur="8s" repeatCount="indefinite"/>
+    </rect>
+    <text x="575" y="112" text-anchor="middle" class="t tier" fill="#BC8CFF">.trusted</text>
+    <text x="575" y="134" text-anchor="middle" class="t sub">used often, reliably —</text>
+    <text x="575" y="151" text-anchor="middle" class="t sub">still asks before acting</text>
+  </g>
+  <line x1="674" y1="108" x2="701" y2="98" stroke="#6E7681" stroke-width="2" marker-end="url(#arrUp)"/>
+  <text x="800" y="50" text-anchor="middle" class="t lbl">↑ 10+ uses, clean</text>
+
+  <!-- ====== .autonomous ====== -->
+  <g>
+    <rect x="705" y="60" width="190" height="86" rx="12" fill="#161B22" stroke="#3FB950" stroke-width="1.5"/>
+    <rect x="705" y="60" width="190" height="86" rx="12" fill="none" stroke="#3FB950" stroke-width="3" opacity="0">
+      <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.7;0.75;0.95;1" dur="8s" repeatCount="indefinite"/>
+    </rect>
+    <text x="800" y="92" text-anchor="middle" class="t tier" fill="#3FB950">.autonomous</text>
+    <text x="800" y="114" text-anchor="middle" class="t sub">fully earned its freedom —</text>
+    <text x="800" y="131" text-anchor="middle" class="t sub">acts without asking</text>
+  </g>
+
+  <!-- climbing token -->
+  <circle r="6" fill="#D97757">
+    <animateMotion dur="8s" repeatCount="indefinite" path="M 125 163 L 350 143 L 575 123 L 800 103" calcMode="linear"/>
+    <animate attributeName="opacity" values="0;1;1;1;1;0" keyTimes="0;0.06;0.3;0.6;0.9;1" dur="8s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- demotion path -->
+  <path d="M 800 150 C 800 245, 200 245, 128 212" stroke="#F85149" stroke-width="2" stroke-dasharray="7 6" fill="none" marker-end="url(#arrDown)" opacity="0.85">
+    <animate attributeName="stroke-dashoffset" from="0" to="-52" dur="2.2s" repeatCount="indefinite"/>
+  </path>
+  <text x="465" y="262" text-anchor="middle" class="t" font-size="13" font-weight="700" fill="#F85149">one correction = one level down  ·  trust is re-earned, never assumed</text>
+
+  <!-- title -->
+  <text x="465" y="36" text-anchor="middle" class="t" font-size="18" font-weight="800" fill="#E6EDF3">The trust ladder — autonomy is earned, like a new hire's</text>
+</svg>
