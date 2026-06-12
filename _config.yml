@@ -1,0 +1,3 @@
+title: "compounded — the Claude Code plugin that learns from your corrections"
+description: "Correct Claude once, approve the lesson, never repeat yourself. Approved rules earn autonomy through a trust ladder: verified → trusted → autonomous. One mistake = one level down. No daemon, no cloud, 100% local."
+theme: jekyll-theme-cayman
