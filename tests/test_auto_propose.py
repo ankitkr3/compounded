@@ -161,8 +161,9 @@ class AutoProposeScorerTests(unittest.TestCase):
         self.assertEqual(signals["capture_kind"], "rule")
 
     def test_assistant_acknowledgment_captures_rule_for_any_phrasing(self) -> None:
-        # Channel 2: the user's phrasing matches NO pattern at all, but the
-        # assistant's reply acknowledges the correction — that generalizes.
+        # Channel 2: the user's phrasing matches NO hard correction pattern, but
+        # the message shows doubt ("?" / "maybe") and the assistant's reply
+        # acknowledges the correction. Doubt corroborates the ack → fires.
         events = [
             _user("hmm gemini 2 maybe?"),
             _assistant(
@@ -175,6 +176,79 @@ class AutoProposeScorerTests(unittest.TestCase):
         signals = self.auto_propose.score_turn(turn, prior)
         self.assertFalse(signals["correction_user"])   # phrasing matched nothing
         self.assertTrue(signals["correction_ack"])     # Claude's reaction did
+        self.assertEqual(signals["capture_kind"], "rule")
+
+    def test_ack_alone_without_user_doubt_does_not_fire(self) -> None:
+        # Regression (field): the dominant false positive. The user gives a
+        # neutral directive (no doubt, no question) and Claude's reply happens
+        # to open with ack vocabulary ("I was wrong …"). Channel 2 must NOT
+        # arm a correction without user-side corroboration.
+        events = [
+            _user("yes, write up the plan and make sure we only improve it, not degrade it"),
+            _assistant(
+                tool_uses=[
+                    ("Read", {"file_path": "/a.py"}),
+                    ("Bash", {"command": "ls"}),
+                ],
+                text="I was wrong about that earlier — fair point. Here is the corrected plan.",
+            ),
+            _tool_result(),
+        ]
+        turn, prior = self.auto_propose._split_into_turns(events)
+        signals = self.auto_propose.score_turn(turn, prior)
+        self.assertTrue(signals["correction_ack"])     # ack phrasing present
+        self.assertFalse(signals["user_doubt"])        # but user expressed none
+        self.assertFalse(signals["correction"])        # so no correction armed
+        self.assertIsNone(signals["capture_kind"])
+
+    def test_assistant_self_correction_in_meta_discussion_silent(self) -> None:
+        # Claude correcting its OWN prior analysis (no user pushback at all)
+        # must stay silent — there is no user correction to learn from.
+        events = [
+            _user("find why it's misfiring"),
+            _assistant(
+                tool_uses=[("Read", {"file_path": "/auto_propose.py"})],
+                text="You're right to ask. I was wrong in my earlier read — here's the real cause.",
+            ),
+            _tool_result(),
+        ]
+        turn, prior = self.auto_propose._split_into_turns(events)
+        signals = self.auto_propose.score_turn(turn, prior)
+        self.assertFalse(signals["user_doubt"])
+        self.assertNotEqual(signals["capture_kind"], "rule")
+
+    def test_ack_with_user_question_mark_still_fires(self) -> None:
+        # Preserve channel 2 for genuine doubt: a bare question + ack still
+        # arms rule capture even with no hard correction keyword.
+        events = [
+            _user("wait is that the current api?"),
+            _assistant(
+                tool_uses=[("WebSearch", {"query": "current anthropic api version"})],
+                text="Good catch — you're right, there's a newer one.",
+            ),
+            _tool_result(),
+        ]
+        turn, prior = self.auto_propose._split_into_turns(events)
+        signals = self.auto_propose.score_turn(turn, prior)
+        self.assertFalse(signals["correction_user"])
+        self.assertTrue(signals["user_doubt"])         # via "?"
+        self.assertEqual(signals["capture_kind"], "rule")
+
+    def test_ack_with_soft_doubt_no_question_mark_fires(self) -> None:
+        # Soft doubt without a question mark ("i think u are wrong …") still
+        # corroborates the ack. Mirrors the settle-race field case at unit level.
+        events = [
+            _user("i think u are wrong, gemini already has a newer model, can u web search and tell"),
+            _assistant(
+                tool_uses=[("WebSearch", {"query": "latest gemini embedding model"})],
+                text="You were right — Google shipped a newer one.",
+            ),
+            _tool_result(),
+        ]
+        turn, prior = self.auto_propose._split_into_turns(events)
+        signals = self.auto_propose.score_turn(turn, prior)
+        self.assertFalse(signals["correction_user"])   # no hard pattern matches
+        self.assertTrue(signals["user_doubt"])         # via "i think" / "wrong"
         self.assertEqual(signals["capture_kind"], "rule")
 
     def test_pattern_buried_in_user_paste_is_not_a_correction(self) -> None:
