@@ -20,7 +20,8 @@ Signals we count (in the last assistant turn):
   bash_count       — Bash tool invocations
   plan_used        — Plan/ExitPlanMode/EnterPlanMode tool usage
   recovery         — at least one tool error followed by a successful retry
-  correction       — user message before the assistant turn contains a correction signal
+  correction       — a real correction: user phrasing (channel 1), OR an
+                     assistant acknowledgment (channel 2) corroborated by user doubt
 
 Scoring (additive, threshold-based):
   +2  tool_uses >= 5
@@ -31,6 +32,17 @@ Scoring (additive, threshold-based):
   ----------
   procedure capture: fire if score >= 3 AND correction == False
   rule capture:      fire if correction == True AND tool_uses >= 1
+
+Correction has two channels, and they are NOT symmetric:
+  - Channel 1 (user phrasing) can arm a correction on its own — the user
+    explicitly flagged a problem.
+  - Channel 2 (assistant acknowledgment) is a CONFIRMING signal only. The
+    model's ack vocabulary ("you're right", "my mistake", "i was wrong") also
+    covers ordinary agreement and self-correction in meta-discussion, so an ack
+    counts as a correction only when the user's message also shows doubt
+    (a question, or a soft-doubt term). This kills the dominant false positive:
+    Claude saying "I was wrong" about its own prior claim while the user gave a
+    neutral instruction. See _user_shows_doubt.
 
 Two capture kinds:
   procedure — a successful multi-step task worth saving as a replayable
@@ -144,10 +156,17 @@ CORRECTION_PATTERNS = (
 # beats more keyword surgery.
 OPENING_WINDOW_CHARS = 250
 
-# Channel 2: the ASSISTANT's reaction. This is the channel that generalizes:
-# however the user phrases a correction, the model's acknowledgment is highly
-# standardized ("you're right", "my mistake", "good catch"). The LLM in the
-# loop does the semantic understanding; the hook just reads its reaction.
+# Channel 2: the ASSISTANT's reaction. However the user phrases a correction,
+# the model's acknowledgment is highly standardized ("you're right", "my
+# mistake", "good catch"). The LLM in the loop does the semantic understanding;
+# the hook just reads its reaction.
+#
+# But this same vocabulary covers ordinary agreement and — the dominant false
+# positive — Claude self-correcting its OWN prior claim in conversation ("I was
+# wrong about that"). So channel 2 is CONFIRMING, not self-sufficient: it counts
+# only when the user's message also shows doubt (see _user_shows_doubt /
+# DOUBT_LEXICON). A genuine user correction Claude acknowledges still fires; a
+# neutral instruction Claude happens to answer apologetically does not.
 ACK_PATTERNS = (
     "you're right",
     "you are right",
@@ -174,6 +193,25 @@ ACK_PATTERNS = (
     "i mentioned earlier",
     "i said earlier",
     "correcting my",
+)
+
+# Corroboration lexicon for channel 2. An assistant ack is only treated as a
+# correction when the user's message opening shows doubt — a question mark, any
+# CORRECTION_PATTERN, or one of these softer doubt markers. Broader than
+# CORRECTION_PATTERNS on purpose: these are too weak to arm a correction ALONE
+# (channel 1), but strong enough to confirm that an ack reflects a real user
+# correction rather than Claude's conversational politeness.
+DOUBT_LEXICON = (
+    "i think",
+    "i thought",
+    "maybe",
+    "not sure",
+    "unsure",
+    "wrong",
+    "actually",
+    "hmm",
+    "really?",
+    "sure?",
 )
 
 
@@ -399,6 +437,28 @@ def _has_correction_signal(prior_user: dict | None) -> bool:
     return any(p in text for p in CORRECTION_PATTERNS)
 
 
+def _user_shows_doubt(prior_user: dict | None) -> bool:
+    """Corroboration gate for channel 2: did the USER actually express doubt?
+
+    Scans only the message opening (same OPENING_WINDOW_CHARS guard as the other
+    channels) for a question mark, a hard CORRECTION_PATTERN, or a softer
+    DOUBT_LEXICON term. Used to validate an assistant acknowledgment — never to
+    arm a correction on its own. Without this, Claude acknowledging its own
+    prior claim ("I was wrong about that") in a neutral exchange reads as a
+    user correction, which is the dominant false positive.
+    """
+    if prior_user is None:
+        return False
+    text = _extract_text(prior_user).lower()[:OPENING_WINDOW_CHARS]
+    if not text:
+        return False
+    if "?" in text:
+        return True
+    if any(p in text for p in CORRECTION_PATTERNS):
+        return True
+    return any(p in text for p in DOUBT_LEXICON)
+
+
 def _assistant_acknowledged_correction(turn_events: list[dict]) -> bool:
     """Channel 2: the assistant's own text admits it was corrected.
 
@@ -429,7 +489,12 @@ def score_turn(turn_events: list[dict], prior_user: dict | None) -> dict:
     recovery = _has_recovery(turn_events)
     correction_user = _has_correction_signal(prior_user)
     correction_ack = _assistant_acknowledged_correction(turn_events)
-    correction = correction_user or correction_ack
+    user_doubt = _user_shows_doubt(prior_user)
+    # Channel 1 (user phrasing) arms a correction alone. Channel 2 (assistant
+    # ack) only counts when corroborated by user doubt — otherwise it fires on
+    # Claude's conversational politeness and self-corrections.
+    ack_is_correction = correction_ack and user_doubt
+    correction = correction_user or ack_is_correction
 
     score = 0
     if len(tool_uses) >= THRESHOLD_TOOL_USES:
@@ -465,6 +530,7 @@ def score_turn(turn_events: list[dict], prior_user: dict | None) -> dict:
         "correction": correction,
         "correction_user": correction_user,
         "correction_ack": correction_ack,
+        "user_doubt": user_doubt,
     }
 
 
