@@ -251,6 +251,49 @@ class AutoProposeScorerTests(unittest.TestCase):
         self.assertTrue(signals["user_doubt"])         # via "i think" / "wrong"
         self.assertEqual(signals["capture_kind"], "rule")
 
+    def test_additive_correction_with_rework_and_ack_captures_rule(self) -> None:
+        # Regression (field): the user corrected an approach with a calm,
+        # ADDITIVE instruction ("use UI testing as well") — no question, no
+        # doubt keyword — and Claude acknowledged and did real rework. Doubt
+        # is absent, but the rework arm corroborates the ack. Must arm rule
+        # capture (the generalize-vs-one-off call is the LLM gate's job).
+        events = [
+            _user("use UI testing as well, don't sign off on DOM checks alone"),
+            _assistant(
+                tool_uses=[
+                    ("Edit", {"file_path": "/chart.ts", "old_string": "x", "new_string": "y"}),
+                    ("Edit", {"file_path": "/feed.ts", "old_string": "x", "new_string": "y"}),
+                    ("Bash", {"command": "npm test"}),
+                ],
+                text="You're right — I should have verified the rendered UI. Fixed and screenshotted.",
+            ),
+            _tool_result(),
+        ]
+        turn, prior = self.auto_propose._split_into_turns(events)
+        signals = self.auto_propose.score_turn(turn, prior)
+        self.assertTrue(signals["correction_ack"])
+        self.assertFalse(signals["user_doubt"])        # no question / doubt word
+        self.assertEqual(signals["capture_kind"], "rule")
+
+    def test_ack_with_rework_but_user_correction_phrased_additively(self) -> None:
+        # Companion to the suppression test: identical ack, but here real edits
+        # exist, so the rework arm flips it from procedure to rule.
+        events = [
+            _user("also always run the linter before you finish"),
+            _assistant(
+                tool_uses=[
+                    ("Edit", {"file_path": "/a.py", "old_string": "x", "new_string": "y"}),
+                    ("Bash", {"command": "ruff check"}),
+                ],
+                text="Good catch — running it now.",
+            ),
+            _tool_result(),
+        ]
+        turn, prior = self.auto_propose._split_into_turns(events)
+        signals = self.auto_propose.score_turn(turn, prior)
+        self.assertFalse(signals["user_doubt"])
+        self.assertEqual(signals["capture_kind"], "rule")
+
     def test_pattern_buried_in_user_paste_is_not_a_correction(self) -> None:
         # Regression (field): the user pasted a transcript that contained
         # "Is there a newer [model / SDK / tool] than [X]?" ~1000 chars in —
@@ -500,9 +543,10 @@ class AutoProposeMainTests(unittest.TestCase):
         self.assertEqual(result["rc"], 0)
         self.assertEqual(result["output"].get("decision"), "block")
         reason = result["output"]["reason"]
-        self.assertIn("Correction detected", reason)
+        self.assertIn("correction", reason.lower())
         self.assertIn("RULE MODE", reason)
         self.assertIn("AskUserQuestion", reason)  # approval gate is part of the nudge
+        self.assertIn("one-off", reason)  # semantic gate: drop one-offs silently
 
     def test_rule_block_suppressed_when_stop_hook_active(self) -> None:
         # Loop guard: when this Stop fires after a previous block, never

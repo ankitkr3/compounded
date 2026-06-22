@@ -39,10 +39,18 @@ Correction has two channels, and they are NOT symmetric:
   - Channel 2 (assistant acknowledgment) is a CONFIRMING signal only. The
     model's ack vocabulary ("you're right", "my mistake", "i was wrong") also
     covers ordinary agreement and self-correction in meta-discussion, so an ack
-    counts as a correction only when the user's message also shows doubt
-    (a question, or a soft-doubt term). This kills the dominant false positive:
-    Claude saying "I was wrong" about its own prior claim while the user gave a
-    neutral instruction. See _user_shows_doubt.
+    counts as a correction only when corroborated by EITHER user doubt
+    (a question or a soft-doubt term, see _user_shows_doubt) OR substantial
+    corrective rework (an edit, or a turn heavy enough to clear the procedure
+    bar). Doubt catches questioned facts; rework catches corrections phrased as
+    calm additive instructions ("use UI testing as well") that carry no doubt
+    words. The no-rework self-ack ("I was wrong about my own claim" in a neutral
+    chat) stays suppressed — that is the dominant false positive.
+
+Generalizable-vs-one-off is NOT decided here. A correction that clears the bar
+is handed to the compounded-author RULE MODE gate (build_rule_reason), which is
+told to judge generalizability first and drop one-offs silently. Detection is
+deterministic and intentionally cannot make that semantic call.
 
 Two capture kinds:
   procedure — a successful multi-step task worth saving as a replayable
@@ -490,11 +498,6 @@ def score_turn(turn_events: list[dict], prior_user: dict | None) -> dict:
     correction_user = _has_correction_signal(prior_user)
     correction_ack = _assistant_acknowledged_correction(turn_events)
     user_doubt = _user_shows_doubt(prior_user)
-    # Channel 1 (user phrasing) arms a correction alone. Channel 2 (assistant
-    # ack) only counts when corroborated by user doubt — otherwise it fires on
-    # Claude's conversational politeness and self-corrections.
-    ack_is_correction = correction_ack and user_doubt
-    correction = correction_user or ack_is_correction
 
     score = 0
     if len(tool_uses) >= THRESHOLD_TOOL_USES:
@@ -507,6 +510,20 @@ def score_turn(turn_events: list[dict], prior_user: dict | None) -> dict:
         score += 2
     if plan_used:
         score += 1
+
+    # Channel 1 (user phrasing) arms a correction alone. Channel 2 (assistant
+    # ack) needs corroboration, because ack vocabulary also covers politeness
+    # and Claude self-correcting its own prior claim. It is corroborated by
+    # EITHER user doubt OR substantial corrective rework (an edit, or a turn
+    # heavy enough to clear the procedure bar). The rework arm catches
+    # corrections phrased as calm additive instructions ("use UI testing as
+    # well") that carry no doubt words; the no-rework self-ack false positive
+    # stays suppressed. Whether the lesson generalizes vs. is a one-off is NOT
+    # decided here — that semantic call is delegated to the compounded-author
+    # RULE MODE gate (see build_rule_reason), which drops one-offs silently.
+    strong_rework = len(edit_files) >= 1 or score >= SCORE_TO_FIRE
+    ack_is_correction = correction_ack and (user_doubt or strong_rework)
+    correction = correction_user or ack_is_correction
 
     # A correction followed by real corrective work is the highest-signal
     # learning event: capture the lesson as a rule. Otherwise a high-signal
@@ -583,15 +600,17 @@ def build_rule_reason(signals: dict) -> str:
     forced continuation is justified here (and stop_hook_active guards loops).
     """
     return (
-        f"[compounded] Correction detected — the user corrected your previous "
-        f"approach and you then did {signals['tool_uses']} tool call(s) of corrective work. "
-        f"This may encode a reusable behavioral rule (the delta between what the user "
-        f"asked, what you did, and how they corrected you). "
-        f"Invoke the `compounded-author` skill in RULE MODE: extract the generalizable "
-        f"lesson, ask the user to approve it via AskUserQuestion BEFORE saving, and if "
-        f"approved propose it as a `kind: rule` skill. "
-        f"If the correction was a one-off (specific value, path, or taste call with no "
-        f"general trigger), do nothing further and end your turn."
+        f"[compounded] Possible correction — the user steered your approach and you then "
+        f"did {signals['tool_uses']} tool call(s) of corrective work. "
+        f"This MAY encode a reusable behavioral rule, or it may be a one-off. "
+        f"Detection is deterministic and cannot tell those apart; that judgment is yours. "
+        f"FIRST, silently decide whether the lesson generalizes: would it apply to future, "
+        f"unrelated tasks (a durable working preference, a process the user wants by default)? "
+        f"Or is it specific to this code/value/path/taste call with no general trigger? "
+        f"If it is a one-off, do NOTHING — end your turn silently, do not ask the user. "
+        f"Only if it genuinely generalizes: invoke the `compounded-author` skill in RULE MODE, "
+        f"extract the lesson, ask the user to approve it via AskUserQuestion BEFORE saving, and "
+        f"if approved propose it as a `kind: rule` skill."
     )
 
 
